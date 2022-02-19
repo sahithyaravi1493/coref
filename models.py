@@ -96,6 +96,12 @@ class SimplePairWiseClassifier(nn.Module):
         self.input_layer = config.bert_hidden_size * 3 if config.with_head_attention else config.bert_hidden_size * 2
         if config.with_mention_width:
             self.input_layer += config.embedding_dimension
+        if config.include_graph:
+            # set knowledge_embedding_dimension=1024,relations_per_sentence=0 when using COMET sentence embeddings
+            if config.exclude_span_repr:
+                # exclude span representation, use only the knowledge embedding
+                self.input_layer = 0
+            self.input_layer += config.knowledge_embedding_dimension * (config.relations_per_sentence + 1)
         self.input_layer *= 3
         self.hidden_layer = config.hidden_layer
         self.pairwise_mlp = nn.Sequential(

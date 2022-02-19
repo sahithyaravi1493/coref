@@ -4,6 +4,7 @@ import os
 import torch
 import random
 import numpy as np
+import pandas as pd
 import smtplib
 import torch.optim as optim
 from transformers import AdamW, get_linear_schedule_with_warmup
@@ -37,32 +38,47 @@ def create_corpus(config, tokenizer, split_name, is_training=True):
     return Corpus(documents, tokenizer, config.segment_window, mentions, subtopic=config.subtopic, predicted_topics=predicted_topics)
 
 
-
-
-
 def create_logger(config, create_file=True):
-    logging.basicConfig(datefmt='%Y-%m-%d %H:%M:%S')
+    os.makedirs(config["log_path"], exist_ok=True)
+
+    logging.basicConfig(
+        datefmt='%Y-%m-%d %H:%M:%S',
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[
+            # logging.FileHandler(os.path.join(config.log_path, "test.log")),
+            logging.FileHandler(os.path.join(config.log_path,'{}.log'.format(datetime.now().strftime("%Y_%m_%d_%H_%M_%S")))),
+            logging.StreamHandler()
+        ]
+    )
     logger = logging.getLogger('simple_example')
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-
-    c_handler = logging.StreamHandler()
-    c_handler.setLevel(logging.INFO)
-    c_handler.setFormatter(formatter)
-    logger.addHandler(c_handler)
-
-    if create_file:
-        if not os.path.exists(config.log_path):
-            os.makedirs(config.log_path)
-
-        f_handler = logging.FileHandler(
-            os.path.join(config.log_path,'{}.txt'.format(datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))), mode='w')
-        f_handler.setLevel(logging.INFO)
-        f_handler.setFormatter(formatter)
-        logger.addHandler(f_handler)
-
-    logger.propagate = False
+    logger.propagate = True
 
     return logger
+
+# def create_logger(config, create_file=True):
+#     logging.basicConfig(datefmt='%Y-%m-%d %H:%M:%S')
+#     logger = logging.getLogger('simple_example')
+#     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+#
+#     c_handler = logging.StreamHandler()
+#     c_handler.setLevel(logging.INFO)
+#     c_handler.setFormatter(formatter)
+#     logger.addHandler(c_handler)
+#
+#     if create_file:
+#         if not os.path.exists(config.log_path):
+#             os.makedirs(config.log_path)
+#
+#         f_handler = logging.FileHandler(
+#             os.path.join(config.log_path,'{}.txt'.format(datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))), mode='w')
+#         f_handler.setLevel(logging.INFO)
+#         f_handler.setFormatter(formatter)
+#         logger.addHandler(f_handler)
+#
+#     logger.propagate = False
+#
+#     return logger
 
 
 def create_folder(path):
@@ -161,3 +177,47 @@ def align_ecb_bert_tokens(ecb_tokens, bert_tokens):
             raise ValueError((bert_token, ecb_token))
 
     return bert_to_ecb_ids
+
+
+def save_pkl_dump(filename, dictionary):
+    with open(f'{filename}.pickle', 'wb') as handle:
+        pickle.dump(dictionary, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def load_pkl_dump(filename):
+    with open(f'{filename}.pickle', 'rb') as handle:
+        a = pickle.load(handle)
+    return a
+
+
+def load_pickle(filepath):
+    df = pd.read_pickle(filepath)
+    return df
+
+
+def load_stored_embeddings(config, split):
+    if config.embedding_type == "rgcn":
+        embedding = load_pkl_dump(f"{config.stored_embeddings_path}_{split}")
+        return embedding
+    else:
+        embedding = load_pickle(f"{config.stored_embeddings_path}_{split}.pkl")
+        return embedding
+
+
+def batch_saved_embeddings(batch_ids, config, embedding):
+    """
+
+    @param batch_ids: keys of the batch
+    @param config:  configuration variables
+    @param embedding: dict of embeddings
+    @return:
+    """
+    batch_embeddings = []
+    for ind in batch_ids:
+        if config.embedding_type == "rgcn":
+            out = embedding[ind]
+        else:
+            # sentence embeddings are stored as a dataframe, so use .loc
+            out = embedding.loc[ind][0]
+        batch_embeddings.append(out)
+    return np.array(batch_embeddings)

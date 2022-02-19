@@ -101,7 +101,7 @@ if __name__ == '__main__':
 
 
 
-    bert_tokenizer = AutoTokenizer.from_pretrained(config['bert_model'])
+    bert_tokenizer = AutoTokenizer.from_pretrained(config['bert_tokenizer'])
     data = create_corpus(config, bert_tokenizer, 'dev')
 
     clustering_5 = AgglomerativeClustering(n_clusters=None, affinity='precomputed', linkage=config['linkage_type'],

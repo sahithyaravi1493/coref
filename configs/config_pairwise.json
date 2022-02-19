@@ -1,5 +1,6 @@
 {
   "gpu_num" : [0],
+  "bert_tokenizer": "roberta-large",
   "bert_model": "roberta-large",
   "bert_hidden_size": 1024,
   "hidden_layer": 1024,
@@ -12,7 +13,7 @@
   "use_gold_mentions": false,
   "mention_type": "events",
   "top_k": 0.25,
-  "training_method": "continue",
+  "training_method": "pipeline",
   "subtopic": true,
   "use_predicted_topics": false,
   "segment": true,
@@ -28,6 +29,13 @@
   "segment_window": 512,
   "neg_samp": true,
   "exact": false,
+
+  "include_graph": true,
+  "knowledge_embedding_dimension": 100,
+  "relations_per_sentence": 50,
+  "exclude_span_repr": true,
+  "embedding_type": "rgcn",
+  "stored_embeddings_path": "comet/rgcn_hidden",
 
   "log_path": "logs/pairwise_scorer/",
   "data_folder": "data/ecb/mentions",

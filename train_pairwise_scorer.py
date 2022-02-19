@@ -12,9 +12,55 @@ from model_utils import *
 from utils import *
 
 
+def combine_ids(dids, sids):
+    """
+    combine documentid , sentenceid into documentid_sentenceid
+    @param dids: list of document ids
+    @param sids: list of sentence ids
+    @return:
+    """
+    underscores = ['_'] * len(dids)
+    dids = list(map(''.join, zip(dids, underscores)))
+    combined_ids = list(map(''.join, zip(dids, sids)))
+    return combined_ids
+
+
+def graph_final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embeddings):
+    """
+    if include_graph is set to false, returns the span embeddings
+    if include_graph is set to true, returns the graph and/ span embeddings
+
+    @param first_batch_ids: keys of first batch
+    @param second_batch_ids: keys of second batch
+    @param config: configuration variables
+    @param span1: span1 embeddings
+    @param span2: span2 embeddings
+    @param embeddings: dict with all knowledge embeddings, we will look up the ids in this dict
+    @return:
+    """
+    if not config.include_graph:
+        # if graph is not included, just use spans
+        return span1, span2
+    else:
+        # if graph is included, load the saved embeddings for this batch
+        graph1 = batch_saved_embeddings(first_batch_ids, config, embeddings)
+        graph2 = batch_saved_embeddings(second_batch_ids, config, embeddings)
+        graph1 = torch.tensor(graph1).float().cuda()
+        graph2 = torch.tensor(graph2).float().cuda()
+
+        if config.exclude_span_repr:
+            # if this is set to true, we exclude spans entirely and only use graph
+            g1_new, g2_new = graph1, graph2
+        else:
+            # Concatenate span + graph
+            g1_new = torch.cat((span1, graph1), axis=1)
+            g2_new = torch.cat((span2, graph2), axis=1)
+
+    return g1_new, g2_new
 
 def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, span_embeddings,
-                                    first, second, labels, batch_size, criterion, optimizer):
+                                    first, second, labels, batch_size, criterion, optimizer, combined_indices,
+                              graph_embeddings):
     accumulate_loss = 0
     start_end_embeddings, continuous_embeddings, width = span_embeddings
     device = start_end_embeddings.device
@@ -31,7 +77,15 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
                                 [continuous_embeddings[k] for k in batch_first], width[batch_first])
         g2 = span_repr(start_end_embeddings[batch_second],
                                 [continuous_embeddings[k] for k in batch_second], width[batch_second])
-        scores = pairwise_model(g1, g2)
+
+        # calculate the keys to look up graph embeddings for this batch
+        # the look up keys are combined ids we calculated earlier of the form docid_sentenceid
+        combined1 = [combined_indices[k] for k in batch_first]
+        combined2 = [combined_indices[k] for k in batch_second]
+        g1_final, g2_final = graph_final_vectors(combined1, combined2, config,
+                                                 g1, g2, graph_embeddings)
+
+        scores = pairwise_model(g1_final, g2_final)
 
         if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions']:
             g1_score = span_scorer(g1)
@@ -72,6 +126,11 @@ def get_all_candidate_spans(config, bert_model, span_repr, span_scorer, data, to
 
     span_indices = span_indices.cpu()
     topic_spans.prune_spans(span_indices)
+
+    d_ids = topic_spans.doc_ids.tolist()
+    s_ids = topic_spans.sentence_id.squeeze().numpy().astype(str).tolist()
+    # combined_ids holds the keys for looking up graph/node embeddings
+    topic_spans.combined_ids = combine_ids(d_ids, s_ids)
     torch.cuda.empty_cache()
 
     return topic_spans
@@ -130,6 +189,12 @@ if __name__ == '__main__':
     training_set = create_corpus(config, bert_tokenizer, 'train')
     dev_set = create_corpus(config, bert_tokenizer, 'dev')
 
+    graph_embeddings_train = None
+    graph_embeddings_dev = None
+
+    if config.include_graph:
+        graph_embeddings_train = load_stored_embeddings(config, split='train')
+        graph_embeddings_dev = load_stored_embeddings(config, split='val')
 
     ## Model initiation
     logger.info('Init models')
@@ -182,7 +247,9 @@ if __name__ == '__main__':
             first, second, pairwise_labels = get_pairwise_labels(topic_spans.labels, is_training=config['neg_samp'])
             span_embeddings = topic_spans.start_end_embeddings, topic_spans.continuous_embeddings, topic_spans.width
             loss = train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, span_embeddings, first,
-                                                   second, pairwise_labels, config['batch_size'], criterion, optimizer)
+                                            second, pairwise_labels, config['batch_size'], criterion, optimizer,
+                                             topic_spans.combined_ids, graph_embeddings_train
+                                             )
             torch.cuda.empty_cache()
             accumulate_loss += loss
             total_number_of_pairs += len(first)
@@ -219,7 +286,13 @@ if __name__ == '__main__':
                     g2 = span_repr(topic_spans.start_end_embeddings[second_idx],
                                    [topic_spans.continuous_embeddings[k] for k in second_idx],
                                    topic_spans.width[second_idx])
-                    scores = pairwise_model(g1, g2)
+                    # calculate the keys to look up graph embeddings for this batch
+                    combined_ids1 = [topic_spans.combined_ids[k] for k in first_idx]
+                    combined_ids2 = [topic_spans.combined_ids[k] for k in second_idx]
+                    g1_final, g2_final = graph_final_vectors(combined_ids1, combined_ids2, config, g1, g2,
+                                                             graph_embeddings_dev)
+
+                    scores = pairwise_model(g1_final, g2_final)
 
                     if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions']:
                         g1_score = span_scorer(g1)

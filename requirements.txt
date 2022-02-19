@@ -4,3 +4,7 @@ transformers==2.8.0
 spacy==2.1.4
 pyhocon==0.3.51
 scikit-learn==0.24.1
+networkx==2.6.3
+plotly
+# non cuda : dgl -f https://data.dgl.ai/wheels/repo.html
+# cuda: dgl-<VER> -f https://data.dgl.ai/wheels/repo.html

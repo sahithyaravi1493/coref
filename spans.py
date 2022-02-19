@@ -18,6 +18,7 @@ class TopicSpans:
         self.origin_start = []
         self.origin_end = []
         self.width = []
+        self.combined_ids = []
 
         self.text = []
         self.lemma = []

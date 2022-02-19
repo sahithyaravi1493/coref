@@ -2,6 +2,7 @@
   "gpu_num" : [1],
 
   "bert_model": "roberta-large",
+  "bert_tokenizer": "roberta-large",
   "hidden_layer": 1024,
   "dropout": 0.3,
   "with_mention_width": true,
