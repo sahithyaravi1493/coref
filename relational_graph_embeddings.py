@@ -11,6 +11,8 @@ import torch.nn.functional as F
 from dgl.nn.pytorch.conv.relgraphconv import RelGraphConv
 from utils import save_pkl_dump, load_pickle
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 # Embeddings saved using COMET (#TODO: move to parse args)
 root_folder = '/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/'
 save_folder = '/ubc/cs/research/nlp/sahiravi/coref/comet/'
@@ -96,7 +98,7 @@ def sentence_vectors(idx, sentence):
 # def process_graph_embeddings(node_embeddings, id):
 #     """
 
-#     @param node_embeddings:
+#     @param node_embeddings: 
 #     @param id:
 #     @return:
 #     """
@@ -166,8 +168,9 @@ def graph_gcn_vectors(model, idx, csk_init=None, sentence_init=None):
 
     # all_embeddings = graph + relation embeddings
     # graph = process_graph_embeddings(hidden, idx)
-    graph = hidden
-    return graph
+    graph = hidden.flatten()
+    reshaped_graph =  graph.reshape((1,-1))
+    return reshaped_graph
 
 
 if __name__ == '__main__':
@@ -188,7 +191,7 @@ if __name__ == '__main__':
         os.mkdir(save_folder)
 
     # go through each split
-    for split in ['val', 'train']:
+    for split in ['train']:
         # load COMET embeddings from sentences and expansions
         cskb_emb = load_pickle(f"{root_folder}expansion_embeddings_{split}.pkl")
         sentence_emb = load_pickle(f"{root_folder}sentence_embeddings_{split}.pkl")
@@ -197,8 +200,10 @@ if __name__ == '__main__':
         vectors = {}
         for ind, row in sentence_emb.iterrows():
             # pass each sentence, convert to graph
-            v = graph_gcn_vectors(graph_model, ind, cskb_emb, sentence_emb).squeeze()
+            v = graph_gcn_vectors(graph_model, ind, cskb_emb, sentence_emb)
             vectors[ind] = v
+            
 
         print(f"Done with split {split}")
+        
         save_pkl_dump(f"{save_folder}rgcn_hidden_{split}", vectors)
