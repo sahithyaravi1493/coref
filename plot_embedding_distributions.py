@@ -4,7 +4,7 @@ import pandas as pd
 import plotly
 from torch import cosine_similarity
 from sklearn.metrics.pairwise import cosine_similarity
-from relational_graph_embeddings import load_pkl_dump, load_pickle, csk_vectors, process_graph_embeddings
+from utils import load_pkl_dump, load_pickle
 from numpy import dot
 from numpy.linalg import norm
 import numpy as np
@@ -12,12 +12,12 @@ from itertools import combinations
 from scipy.spatial import distance
 import plotly.express as px
 import plotly.figure_factory as ff
-
+from relational_graph_embeddings import csk_vectors
 semb = load_pickle('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/sentence_embeddings_val.pkl')
 csemb = load_pickle('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/expansion_embeddings_val.pkl')
 
 cluster_path = '/ubc/cs/research/nlp/sahiravi/datasets/coref/filtered_ecb_corpus_clusters_dev.csv'
-embedding_path = '/ubc/cs/research/nlp/sahiravi/coref/rgcn/rgcn_hidden_val'
+embedding_path = '/ubc/cs/research/nlp/sahiravi/coref/comet/rgcn_hidden_val'
 embs = load_pkl_dump(embedding_path)
 
 def process_csk_embs(batch_node_embeddings, batch_sen_doc_ids):
@@ -98,8 +98,8 @@ def non_cluster_pairs():
 def sims_csk(pairs):
     sims = []
     for x,y in pairs:
-        x1 = csk_vectors([x], csemb)
-        x2 = csk_vectors([y], csemb)
+        x1 = csk_vectors(x, csemb)
+        x2 = csk_vectors(y, csemb)
         v1 = process_csk_embs(x1, [x]).squeeze()
         v2 = process_csk_embs(x2, [y]).squeeze()
         
@@ -116,7 +116,9 @@ def cosine_sims(pairs):
         # # sent
         v1 = semb.loc[x][0]
         v2 = semb.loc[y][0]
-        rgcn_sims.append( dot(embs[x], embs[y])/(norm(embs[x])*norm(embs[y])))
+        c1 = embs[x].squeeze()
+        c2 = embs[y].squeeze()
+        rgcn_sims.append( dot(c1, c2)/(norm(c1)*norm(c2)))
         sen_sims.append( dot(v1, v2)/(norm(v1)*norm(v2)))
         
     print(v1, v2)
@@ -128,19 +130,19 @@ def cosine_sims(pairs):
 sample_corefering_pairs = cluster_pairs()
 sample_non_corefs = non_cluster_pairs()
 
-# CSK:
-# c1 = sims_csk(sample_corefering_pairs)
-# c2 = sims_csk(sample_non_corefs)[:len(sample_corefering_pairs)]
-# df = pd.DataFrame()
+#CSK:
+c1 = sims_csk(sample_corefering_pairs)
+c2 = sims_csk(sample_non_corefs)[:len(sample_corefering_pairs)]
+df = pd.DataFrame()
 # df["corefering"] = c1 
 # df["non_corefering"] = c2
 # fig = px.ecdf(df, x=["corefering", "non_corefering"])
 # fig.update_layout(title_text='CDF CSK embeddings (corefering)',   xaxis_title="Cosine similarity")
 # fig.show()
 # # distribution plot of csk embddings
-# fig = ff.create_distplot([c1, c2], ['corefering pairs', 'non-corefering pairs'], bin_size=0.1)
-# fig.update_layout(title_text='Cosine similarity of csk embeddings(COMET)')
-# fig.show()
+fig = ff.create_distplot([c1, c2], ['corefering pairs', 'non-corefering pairs'], bin_size=0.1)
+fig.update_layout(title_text='Cosine similarity of csk embeddings(COMET)')
+fig.show()
 # # # cdf sentence embeddings
 # df = pd.DataFrame()
 # df["corefering"] = c1 

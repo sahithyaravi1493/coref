@@ -20,7 +20,7 @@
 
   "random_seed": 0,
   "epochs": 10,
-  "batch_size": 32,
+  "batch_size": 1024,
   "learning_rate": 1e-4,
   "weight_decay": 0,
   "loss": "bce",
@@ -33,7 +33,7 @@
   "include_graph": true,
   "knowledge_embedding_dimension": 100,
   "relations_per_sentence": 50,
-  "exclude_span_repr": true,
+  "exclude_span_repr": false,
   "embedding_type": "rgcn",
   "stored_embeddings_path": "comet/rgcn_hidden",
 

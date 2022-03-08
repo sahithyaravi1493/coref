@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from dgl.nn.pytorch.conv.relgraphconv import RelGraphConv
+from dgl.nn import GATConv
 from utils import save_pkl_dump, load_pickle
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -40,8 +41,8 @@ class RelationalGCN(nn.Module):
     def __init__(self, hidden_features, out_features, rel_types=5, in_features=1024, device='cuda'):
         super().__init__()
         self.in_features = in_features
-        self.layer1 = RelGraphConv(in_features, hidden_features, rel_types, regularizer='basis', num_bases=2)
-        self.layer2 = RelGraphConv(hidden_features, out_features, rel_types, regularizer='basis', num_bases=2)
+        self.layer1 = RelGraphConv(in_features, hidden_features, rel_types, regularizer='basis')
+        self.layer2 = RelGraphConv(hidden_features, out_features, rel_types, regularizer='basis')
         self.device = device
 
     def forward(self, nx_graph, sentence_embeddings, csk_embeddings, relations):
@@ -182,7 +183,7 @@ if __name__ == '__main__':
         device = 'cpu'
 
     # Initialize model
-    EMBEDDING_DIM = 100
+    EMBEDDING_DIM = 200
     graph_model = RelationalGCN(EMBEDDING_DIM, EMBEDDING_DIM, N_RELATIONS, device=device)
     graph_model = graph_model.to(device)
 
@@ -191,7 +192,7 @@ if __name__ == '__main__':
         os.mkdir(save_folder)
 
     # go through each split
-    for split in ['train']:
+    for split in ['train', 'val']:
         # load COMET embeddings from sentences and expansions
         cskb_emb = load_pickle(f"{root_folder}expansion_embeddings_{split}.pkl")
         sentence_emb = load_pickle(f"{root_folder}sentence_embeddings_{split}.pkl")
@@ -201,9 +202,9 @@ if __name__ == '__main__':
         for ind, row in sentence_emb.iterrows():
             # pass each sentence, convert to graph
             v = graph_gcn_vectors(graph_model, ind, cskb_emb, sentence_emb)
-            vectors[ind] = v
+            vectors[ind] = v.cpu().detach().numpy()
             
 
-        print(f"Done with split {split}")
+        print(f"Done with split {split}", v.shape)
         
         save_pkl_dump(f"{save_folder}rgcn_hidden_{split}", vectors)
