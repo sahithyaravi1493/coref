@@ -106,9 +106,9 @@ class SimplePairWiseClassifier(nn.Module):
         self.hidden_layer = config.hidden_layer
         self.pairwise_mlp = nn.Sequential(
             nn.Dropout(config.dropout),
-            nn.Linear(self.input_layer, self.hidden_layer),
+            nn.Linear(self.input_layer, self.hidden_layer*2),
             nn.ReLU(),
-            nn.Linear(self.hidden_layer, self.hidden_layer),
+            nn.Linear(self.hidden_layer*2, self.hidden_layer),
             nn.Dropout(config.dropout),
             nn.ReLU(),
             nn.Linear(self.hidden_layer, 1),

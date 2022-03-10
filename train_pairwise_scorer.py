@@ -45,14 +45,15 @@ def graph_final_vectors(first_batch_ids, second_batch_ids, config, span1, span2,
         # if graph is included, load the saved embeddings for this batch
         graph1 = batch_saved_embeddings(first_batch_ids, config, embeddings)
         graph2 = batch_saved_embeddings(second_batch_ids, config, embeddings)
-        graph1 = torch.tensor(graph1).float().cuda()
-        graph2 = torch.tensor(graph2).float().cuda()
+        graph1 = torch.tensor(graph1).squeeze().float().cuda()
+        graph2 = torch.tensor(graph2).squeeze().float().cuda()
 
         if config.exclude_span_repr:
             # if this is set to true, we exclude spans entirely and only use graph
             g1_new, g2_new = graph1, graph2
         else:
             # Concatenate span + graph
+
             g1_new = torch.cat((span1, graph1), axis=1)
             g2_new = torch.cat((span2, graph2), axis=1)
 

@@ -182,6 +182,7 @@ if __name__ == '__main__':
         print("### USING CPU")
         device = 'cpu'
 
+    device = 'cpu'
     # Initialize model
     EMBEDDING_DIM = 200
     graph_model = RelationalGCN(EMBEDDING_DIM, EMBEDDING_DIM, N_RELATIONS, device=device)
@@ -201,7 +202,7 @@ if __name__ == '__main__':
         vectors = {}
         for ind, row in sentence_emb.iterrows():
             # pass each sentence, convert to graph
-            v = graph_gcn_vectors(graph_model, ind, cskb_emb, sentence_emb)
+            v = graph_gcn_vectors(graph_model, ind, cskb_emb, sentence_emb).squeeze()
             vectors[ind] = v.cpu().detach().numpy()
             
 
