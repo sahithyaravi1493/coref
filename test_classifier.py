@@ -9,6 +9,18 @@ import os
 from sklearn.utils import shuffle
 from collections import Counter
 from evaluator import Evaluation
+import wandb
+
+os.environ["WANDB_SILENT"] = "true"
+config={"epochs": 100, "batch_size": 512, "lr":1e-5}
+
+wandb.init(
+  project="coref-pairwise",
+  notes="this is the hand-curated dataset with labels set to 1 if two embeddings are the same",
+  tags=["hand-curated", "train"],
+  config=config,
+)
+wandb.run.name = 'sentence-embeddings-v3'
 # Define all paths
 
 cluster_paths = {
@@ -33,7 +45,7 @@ else:
     INPUT_LAYER = 1024
     semb_train = s_train
     semb_val = s_val
-HAND_CURATED = True
+HAND_CURATED = False
 
 def batch_saved_embeddings(batch_ids, embedding):
     """
@@ -63,22 +75,22 @@ class SimplePairWiseClassifier(nn.Module):
     def __init__(self):
         super(SimplePairWiseClassifier, self).__init__()
         self.input_layer = INPUT_LAYER
-        self.input_layer *= 2
+        self.input_layer *= 3
         self.hidden_layer = 1024
         self.pairwise_mlp = nn.Sequential(
             nn.Dropout(0.1),
-            nn.Linear(self.input_layer, self.hidden_layer*2),
+            nn.Linear(self.input_layer, self.hidden_layer),
             nn.LeakyReLU(),
-            nn.Linear(self.hidden_layer*2, self.hidden_layer),
+            nn.Linear(self.hidden_layer, 512),
             nn.Dropout(0.1),
             nn.LeakyReLU(),
-            nn.Linear(self.hidden_layer, 1),
+            nn.Linear(512, 1),
         )
         self.pairwise_mlp.apply(init_weights)
 
     def forward(self, first, second):
-        #return self.pairwise_mlp(torch.cat((first, second, first * second), dim=1))
-        return self.pairwise_mlp(torch.cat((first, second), dim=1))
+        return self.pairwise_mlp(torch.cat((first, second, first * second), dim=1))
+        #return self.pairwise_mlp(torch.cat((first, second), dim=1))
 
 def create_labels(df_clusters, s):
     # Get dataframe containing cluster information
@@ -113,15 +125,17 @@ def create_labels(df_clusters, s):
             
 
 
-    unique_cluster_ids = df_clusters["cluster_id"].unique()[:100]
+    unique_cluster_ids = df_clusters["cluster_id"].unique()
     first, second = zip(*list(combinations(range(len(unique_cluster_ids)), 2)))
     for i,j in zip(first, second):
         if i != j:
             # print(unique_cluster_ids[i], unique_cluster_ids[j])
             df1 = df_clusters[df_clusters["cluster_id"] == unique_cluster_ids[i]]
             df2 = df_clusters[df_clusters["cluster_id"] == unique_cluster_ids[j]]
-            clus_ids.append(-1)
             id1, id2 = df1["combined_id"].values[0], df2["combined_id"].values[0]
+            # if id1 != id2:
+            clus_ids.append(-1)
+            
             s1_id.append(id1)
             s2_id.append(id2)
             # s1.append(s[id1].squeeze().astype(float))
@@ -145,7 +159,7 @@ def hand_curated_labels(df_clusters):
     s2_id = []
     labels = []
     clus_ids = []
-    unique_cluster_ids = df_clusters["cluster_id"].unique()[:100]
+    unique_cluster_ids = df_clusters["cluster_id"].unique()
     first, second = zip(*list(combinations(range(len(unique_cluster_ids)), 2)))
     for i,j in zip(first, second):
         if i != j:
@@ -172,6 +186,9 @@ def hand_curated_labels(df_clusters):
     dataset["s2_id"] = s1_id
     dataset["label"] = labels
     return dataset
+
+
+
 if __name__ == '__main__':
     if torch.cuda.is_available():
         print("### USING GPU:0")
@@ -188,9 +205,9 @@ if __name__ == '__main__':
         train = pd.read_csv(cluster_paths['train'])
         val = pd.read_csv(cluster_paths['val'])
         t = hand_curated_labels(train)
-        #v = hand_curated_labels(val)
-        v = t 
-        semb_val = semb_train
+        v = hand_curated_labels(val)
+        # v = t 
+        # semb_val = semb_train
     else:
         if not os.path.exists('t.pkl'):
             train = pd.read_csv(cluster_paths['train'])
@@ -208,19 +225,19 @@ if __name__ == '__main__':
     # Init model
     model = SimplePairWiseClassifier().to(device)
     criterion = torch.nn.BCEWithLogitsLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-6)
+    optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
 
     # Train model
-    n_epochs = 10
+    n_epochs = config["epochs"]
     model.train()
-    batch_size = 32
+    batch_size = config["batch_size"]
  
     for epoch in range(n_epochs):
         accumulate_loss = 0
         first_ids = t['s1_id'].values
         second_ids = t['s2_id'].values
         labels = t['label'].values
-        idx = shuffle(list(range(len(first_ids))))
+        idx = shuffle(list(range(len(first_ids))), random_state=20)
         for i in range(0, len(first_ids), batch_size):
             indices = idx[i:i+batch_size]
             
@@ -240,6 +257,7 @@ if __name__ == '__main__':
             optimizer.step()
             torch.cuda.empty_cache()
         print('Epoch {}: Train loss: {}'.format(epoch, accumulate_loss))
+        wandb.log({"loss":accumulate_loss})
 
 
 
@@ -261,6 +279,8 @@ if __name__ == '__main__':
             graph1 = torch.tensor(batch_first).float().cuda()
             graph2 = torch.tensor(batch_second).float().cuda()
             scores = model(graph1,graph2 )
+            loss = criterion(scores.squeeze(1), batch_labels)
+            print("val loss", loss)
             all_scores.extend(scores.squeeze())
             all_labels.extend(batch_labels.to(torch.int))
     
