@@ -10,7 +10,15 @@ from evaluator import Evaluation
 from spans import TopicSpans
 from model_utils import *
 from utils import *
+import wandb
+os.environ["WANDB_SILENT"] = "true"
 
+wandb.init(
+  project="coref-pairwise",
+  notes="add rgcn",
+
+)
+wandb.run.name = 'rgcn-embeddings'
 
 def combine_ids(dids, sids):
     """
@@ -45,8 +53,8 @@ def graph_final_vectors(first_batch_ids, second_batch_ids, config, span1, span2,
         # if graph is included, load the saved embeddings for this batch
         graph1 = batch_saved_embeddings(first_batch_ids, config, embeddings)
         graph2 = batch_saved_embeddings(second_batch_ids, config, embeddings)
-        graph1 = torch.tensor(graph1).squeeze().float().cuda()
-        graph2 = torch.tensor(graph2).squeeze().float().cuda()
+        graph1 = torch.tensor(graph1).float().cuda()
+        graph2 = torch.tensor(graph2).float().cuda()
 
         if config.exclude_span_repr:
             # if this is set to true, we exclude spans entirely and only use graph
@@ -68,7 +76,7 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
     labels = labels.to(device)
     # width = width.to(device)
 
-    idx = shuffle(list(range(len(first))))
+    idx = shuffle(list(range(len(first))), random_state=config.random_seed)
     for i in range(0, len(first), batch_size):
         indices = idx[i:i+batch_size]
         batch_first, batch_second = first[indices], second[indices]
@@ -85,6 +93,7 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
         combined2 = [combined_indices[k] for k in batch_second]
         g1_final, g2_final = graph_final_vectors(combined1, combined2, config,
                                                  g1, g2, graph_embeddings)
+        # print(g1_final.size(), g2_final.size)
 
         scores = pairwise_model(g1_final, g2_final)
 
@@ -257,6 +266,7 @@ if __name__ == '__main__':
 
         logger.info('Number of training pairs: {}'.format(total_number_of_pairs))
         logger.info('Accumulate loss: {}'.format(accumulate_loss))
+        wandb.log({'loss': accumulate_loss})
 
 
         logger.info('Evaluate on the dev set')

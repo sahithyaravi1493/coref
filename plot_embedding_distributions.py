@@ -17,7 +17,7 @@ semb = load_pickle('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expans
 csemb = load_pickle('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/expansion_embeddings_val.pkl')
 
 cluster_path = '/ubc/cs/research/nlp/sahiravi/datasets/coref/filtered_ecb_corpus_clusters_dev.csv'
-embedding_path = '/ubc/cs/research/nlp/sahiravi/coref/comet/rgcn_hidden_val'
+embedding_path = '/ubc/cs/research/nlp/sahiravi/coref/comet/rgcn_init_val'
 embs = load_pkl_dump(embedding_path)
 
 def process_csk_embs(batch_node_embeddings, batch_sen_doc_ids):

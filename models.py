@@ -118,4 +118,3 @@ class SimplePairWiseClassifier(nn.Module):
     def forward(self, first, second):
         return self.pairwise_mlp(torch.cat((first, second, first * second), dim=1))
 
-

@@ -4,7 +4,7 @@
   "bert_model": "roberta-large",
   "bert_hidden_size": 1024,
   "hidden_layer": 1024,
-  "dropout": 0.3,
+  "dropout": 0.1,
   "with_mention_width": true,
   "with_head_attention": true,
   "embedding_dimension": 20,
@@ -18,9 +18,9 @@
   "use_predicted_topics": false,
   "segment": true,
 
-  "random_seed": 0,
-  "epochs": 10,
-  "batch_size": 1024,
+  "random_seed": 20,
+  "epochs": 50,
+  "batch_size": 512,
   "learning_rate": 1e-4,
   "weight_decay": 0,
   "loss": "bce",
@@ -31,9 +31,9 @@
   "exact": false,
 
   "include_graph": true,
-  "knowledge_embedding_dimension": 100,
+  "knowledge_embedding_dimension": 200,
   "relations_per_sentence": 50,
-  "exclude_span_repr": false,
+  "exclude_span_repr": true,
   "embedding_type": "rgcn",
   "stored_embeddings_path": "comet/rgcn_hidden",
 

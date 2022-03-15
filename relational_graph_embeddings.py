@@ -169,7 +169,7 @@ def graph_gcn_vectors(model, idx, csk_init=None, sentence_init=None):
 
     # all_embeddings = graph + relation embeddings
     # graph = process_graph_embeddings(hidden, idx)
-    graph = hidden.flatten()
+    graph = all_embeddings.flatten()
     reshaped_graph =  graph.reshape((1,-1))
     return reshaped_graph
 
@@ -208,4 +208,4 @@ if __name__ == '__main__':
 
         print(f"Done with split {split}", v.shape)
         
-        save_pkl_dump(f"{save_folder}rgcn_hidden_{split}", vectors)
+        save_pkl_dump(f"{save_folder}rgcn_init_{split}", vectors)

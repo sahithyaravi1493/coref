@@ -10,9 +10,12 @@ from sklearn.utils import shuffle
 from collections import Counter
 from evaluator import Evaluation
 import wandb
+import os
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"]="2"  # specify which GPU(s) to be used
 
 os.environ["WANDB_SILENT"] = "true"
-config={"epochs": 100, "batch_size": 512, "lr":1e-5}
+config={"epochs": 25, "batch_size": 512, "lr":1e-5}
 
 wandb.init(
   project="coref-pairwise",
@@ -20,7 +23,7 @@ wandb.init(
   tags=["hand-curated", "train"],
   config=config,
 )
-wandb.run.name = 'sentence-embeddings-v3'
+wandb.run.name = 'rgcn-embeddings-test'
 # Define all paths
 
 cluster_paths = {
@@ -36,9 +39,9 @@ cs_train = load_pickle('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_ex
 cs_val = load_pickle('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/expansion_embeddings_val.pkl')
 
 # Define params
-EMB_TYPE = 'sent' #'sent'
+EMB_TYPE = 'rgcn' #'sent'
 if EMB_TYPE == 'rgcn':
-    INPUT_LAYER = 51*200
+    INPUT_LAYER = 51*200 #200
     semb_train = r_train
     semb_val = r_val
 else:
@@ -192,7 +195,7 @@ def hand_curated_labels(df_clusters):
 if __name__ == '__main__':
     if torch.cuda.is_available():
         print("### USING GPU:0")
-        device = torch.device('cuda:0')  
+        device = torch.device('cuda')  
     else:
         print("### USING CPU")
         device = 'cpu'
@@ -261,37 +264,37 @@ if __name__ == '__main__':
 
 
 
-    model.eval()
-    with torch.no_grad():
-        first_ids = v['s1_id'].values
-        second_ids = v['s2_id'].values
-        labels = v['label'].values
-        idx = list(range(len(first_ids)))
+        model.eval()
+        with torch.no_grad():
+            first_ids = v['s1_id'].values
+            second_ids = v['s2_id'].values
+            labels = v['label'].values
+            idx = list(range(len(first_ids)))
+            
+            all_scores = []
+            all_labels = []
+            for i in range(0, len(first_ids), batch_size):
+                indices = idx[i:i+batch_size]
+                batch_first_ids, batch_second_ids =  first_ids[indices], second_ids[indices]
+                batch_labels = torch.tensor(labels[indices]).float().cuda()
+                batch_first = batch_saved_embeddings(batch_first_ids, semb_val)
+                batch_second = batch_saved_embeddings(batch_second_ids, semb_val)
+                graph1 = torch.tensor(batch_first).float().cuda()
+                graph2 = torch.tensor(batch_second).float().cuda()
+                scores = model(graph1,graph2 )
+                loss = criterion(scores.squeeze(1), batch_labels)
+                print("val loss", loss)
+                all_scores.extend(scores.squeeze())
+                all_labels.extend(batch_labels.to(torch.int))
         
-        all_scores = []
-        all_labels = []
-        for i in range(0, len(first_ids), batch_size):
-            indices = idx[i:i+batch_size]
-            batch_first_ids, batch_second_ids =  first_ids[indices], second_ids[indices]
-            batch_labels = torch.tensor(labels[indices]).float().cuda()
-            batch_first = batch_saved_embeddings(batch_first_ids, semb_val)
-            batch_second = batch_saved_embeddings(batch_second_ids, semb_val)
-            graph1 = torch.tensor(batch_first).float().cuda()
-            graph2 = torch.tensor(batch_second).float().cuda()
-            scores = model(graph1,graph2 )
-            loss = criterion(scores.squeeze(1), batch_labels)
-            print("val loss", loss)
-            all_scores.extend(scores.squeeze())
-            all_labels.extend(batch_labels.to(torch.int))
-    
-    all_labels = torch.stack(all_labels)
-    all_scores = torch.stack(all_scores)
-    strict_preds = (all_scores > 0).to(torch.int)
-    eval = Evaluation(strict_preds, all_labels.to(device))
-    strict_preds = (all_scores > 0).to(torch.int)
-    print('Number of predictions: {}/{}'.format(strict_preds.sum(), len(strict_preds)))
-    print('Number of positive pairs: {}/{}'.format(len(torch.nonzero(all_labels == 1)),
-                                                             len(all_labels)))
-    print('Strict - Recall: {}, Precision: {}, F1: {}'.format(eval.get_recall(),
-                                                            eval.get_precision(), eval.get_f1()))
-      
+        all_labels = torch.stack(all_labels)
+        all_scores = torch.stack(all_scores)
+        strict_preds = (all_scores > 0).to(torch.int)
+        eval = Evaluation(strict_preds, all_labels.to(device))
+        strict_preds = (all_scores > 0).to(torch.int)
+        print('Number of predictions: {}/{}'.format(strict_preds.sum(), len(strict_preds)))
+        print('Number of positive pairs: {}/{}'.format(len(torch.nonzero(all_labels == 1)),
+                                                                len(all_labels)))
+        print('Strict - Recall: {}, Precision: {}, F1: {}'.format(eval.get_recall(),
+                                                                eval.get_precision(), eval.get_f1()))
+        

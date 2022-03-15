@@ -219,5 +219,6 @@ def batch_saved_embeddings(batch_ids, config, embedding):
         else:
             # sentence embeddings are stored as a dataframe, so use .loc
             out = embedding.loc[ind][0]
-        batch_embeddings.append(out)
-    return np.array(batch_embeddings)
+        batch_embeddings.append([out])
+        #print(out.shape)
+    return np.array(batch_embeddings).reshape(len(batch_embeddings), -1)
