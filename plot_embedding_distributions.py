@@ -81,16 +81,14 @@ def non_cluster_pairs():
             # print(unique_cluster_ids[i], unique_cluster_ids[j])
             df1 = df_clusters[df_clusters["cluster_id"] == unique_cluster_ids[i]]
             df2 = df_clusters[df_clusters["cluster_id"] == unique_cluster_ids[j]]
-            
-            id1 = df1["combined_id"].values[0]
-            id2 = df2["combined_id"].values[0]
-            # print("first")
-            # print(df1.head())
-            # print("second")
-            # print(df2.head())
-            
-            if id1 != id2:
-                cluster_pairs.append((id1, id2))
+            min_size = min(len(df1), len(df2))
+            if min_size > 1:
+                f, s = zip(*list(combinations(range(min_size), 2)))
+                for k,l in zip(f,s):
+                    id1 = df1["combined_id"].values[k]
+                    id2 = df2["combined_id"].values[l]
+                    if id1 != id2:
+                        cluster_pairs.append((id1, id2))
 
     return cluster_pairs
 
@@ -129,7 +127,7 @@ def cosine_sims(pairs):
 
 sample_corefering_pairs = cluster_pairs()
 sample_non_corefs = non_cluster_pairs()
-
+print("Coref vs non coref size", len(sample_corefering_pairs), len(sample_non_corefs))
 #CSK:
 c1 = sims_csk(sample_corefering_pairs)
 c2 = sims_csk(sample_non_corefs)[:len(sample_corefering_pairs)]

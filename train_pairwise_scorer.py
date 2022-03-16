@@ -46,6 +46,7 @@ def graph_final_vectors(first_batch_ids, second_batch_ids, config, span1, span2,
     @param embeddings: dict with all knowledge embeddings, we will look up the ids in this dict
     @return:
     """
+    # print("spans", span1.size(), span2.size())
     if not config.include_graph:
         # if graph is not included, just use spans
         return span1, span2

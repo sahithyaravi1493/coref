@@ -4,6 +4,7 @@ from itertools import combinations
 import torch
 import torch.utils.data as data
 import torch.nn as nn
+from torch.optim.lr_scheduler import StepLR
 import numpy as np
 import os
 from sklearn.utils import shuffle
@@ -11,11 +12,14 @@ from collections import Counter
 from evaluator import Evaluation
 import wandb
 import os
+
+# cuda devices
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]="2"  # specify which GPU(s) to be used
 
+# wandb 
 os.environ["WANDB_SILENT"] = "true"
-config={"epochs": 25, "batch_size": 512, "lr":1e-5}
+config={"epochs": 20, "batch_size": 1024, "lr":1e-3}
 
 wandb.init(
   project="coref-pairwise",
@@ -23,7 +27,8 @@ wandb.init(
   tags=["hand-curated", "train"],
   config=config,
 )
-wandb.run.name = 'rgcn-embeddings-test'
+wandb.run.name = 'node-init-embeddings-test-1'
+
 # Define all paths
 
 cluster_paths = {
@@ -31,15 +36,16 @@ cluster_paths = {
     'val':'/ubc/cs/research/nlp/sahiravi/datasets/coref/filtered_ecb_corpus_clusters_dev.csv'
     }
 
-r_train = load_pkl_dump('/ubc/cs/research/nlp/sahiravi/coref/comet/rgcn_hidden_train')
-r_val = load_pkl_dump('/ubc/cs/research/nlp/sahiravi/coref/comet/rgcn_hidden_val')
+r_train = load_pkl_dump('/ubc/cs/research/nlp/sahiravi/coref/comet/rgcn_init_val')
+r_val = load_pkl_dump('/ubc/cs/research/nlp/sahiravi/coref/comet/rgcn_init_val')
 s_train = load_pickle('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/sentence_embeddings_train.pkl')
 s_val = load_pickle('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/sentence_embeddings_val.pkl')
 cs_train = load_pickle('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/expansion_embeddings_train.pkl')
 cs_val = load_pickle('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/expansion_embeddings_val.pkl')
 
 # Define params
-EMB_TYPE = 'rgcn' #'sent'
+WEIGHT = 1
+EMB_TYPE = 'sent' #'sent' or 'rgcn'
 if EMB_TYPE == 'rgcn':
     INPUT_LAYER = 51*200 #200
     semb_train = r_train
@@ -48,6 +54,7 @@ else:
     INPUT_LAYER = 1024
     semb_train = s_train
     semb_val = s_val
+
 HAND_CURATED = False
 
 def batch_saved_embeddings(batch_ids, embedding):
@@ -80,6 +87,15 @@ class SimplePairWiseClassifier(nn.Module):
         self.input_layer = INPUT_LAYER
         self.input_layer *= 3
         self.hidden_layer = 1024
+        # self.pairwise_mlp = nn.Sequential(
+        #     nn.Dropout(0.1),
+        #     nn.Linear(self.input_layer, self.hidden_layer*2),
+        #     nn.ReLU(),
+        #     nn.Linear(self.hidden_layer*2, self.hidden_layer),
+        #     nn.Dropout(0.1),
+        #     nn.ReLU(),
+        #     nn.Linear(self.hidden_layer, 1),
+        # )
         self.pairwise_mlp = nn.Sequential(
             nn.Dropout(0.1),
             nn.Linear(self.input_layer, self.hidden_layer),
@@ -87,7 +103,9 @@ class SimplePairWiseClassifier(nn.Module):
             nn.Linear(self.hidden_layer, 512),
             nn.Dropout(0.1),
             nn.LeakyReLU(),
-            nn.Linear(512, 1),
+            nn.Linear(512, 128),
+            nn.LeakyReLU(),
+            nn.Linear(128, 1),
         )
         self.pairwise_mlp.apply(init_weights)
 
@@ -96,10 +114,7 @@ class SimplePairWiseClassifier(nn.Module):
         #return self.pairwise_mlp(torch.cat((first, second), dim=1))
 
 def create_labels(df_clusters, s):
-    # Get dataframe containing cluster information
-    cluster_pairs = []
-    print(df_clusters[df_clusters["sentence_id_x"]!= df_clusters["sentence_id_y"]])
-    print(df_clusters.columns)
+    # First find all corefering sentence pairs
     df_clusters.dropna(subset=['cluster_desc'], how='all', inplace=True)
     groups = df_clusters.groupby('cluster_id')
     clus_ids = []
@@ -110,9 +125,7 @@ def create_labels(df_clusters, s):
     label = []
     for cluster_id, frame in groups:
         frame["combined_id"] = frame["doc_id_x"] + "_" + frame["sentence_id_x"].astype(str)
-
         # Stick to cluster sizes > 1
-
         if frame["combined_id"].nunique() > 1:
             corefering = frame["combined_id"].values
             first, second = zip(*list(combinations(range(len(corefering)), 2)))
@@ -125,9 +138,7 @@ def create_labels(df_clusters, s):
                 # s2.append(s[id2].squeeze().astype(float))
                 label.append(1)
 
-            
-
-
+    # Second find all non-corefering sentence pairs and add to lists
     unique_cluster_ids = df_clusters["cluster_id"].unique()
     first, second = zip(*list(combinations(range(len(unique_cluster_ids)), 2)))
     for i,j in zip(first, second):
@@ -135,15 +146,20 @@ def create_labels(df_clusters, s):
             # print(unique_cluster_ids[i], unique_cluster_ids[j])
             df1 = df_clusters[df_clusters["cluster_id"] == unique_cluster_ids[i]]
             df2 = df_clusters[df_clusters["cluster_id"] == unique_cluster_ids[j]]
-            id1, id2 = df1["combined_id"].values[0], df2["combined_id"].values[0]
-            # if id1 != id2:
-            clus_ids.append(-1)
-            
-            s1_id.append(id1)
-            s2_id.append(id2)
-            # s1.append(s[id1].squeeze().astype(float))
-            # s2.append(s[id2].squeeze().astype(float))
-            label.append(0)
+            min_size = min(len(df1), len(df2))
+            if min_size > 1:
+                f, s = zip(*list(combinations(range(min_size), 2)))
+                for k,l in zip(f,s):
+                    id1, id2 = df1["combined_id"].values[k], df2["combined_id"].values[l]
+                    # if id1 != id2:
+                    clus_ids.append(-1)
+                    
+                    s1_id.append(id1)
+                    s2_id.append(id2)
+                    # s1.append(s[id1].squeeze().astype(float))
+                    # s2.append(s[id2].squeeze().astype(float))
+                    label.append(0)
+                    # break
             
 
     dataset = pd.DataFrame()
@@ -151,13 +167,11 @@ def create_labels(df_clusters, s):
     dataset["s1_id"] = s1_id
     dataset["s2_id"] = s1_id
     dataset["label"] = label
-    # dataset["emb1"] = s1
-    # dataset["emb2"] = s2
-    # print(dataset["label"].value_counts())
     return dataset
 
 
 def hand_curated_labels(df_clusters):
+    # Create a custom dataset where label =1 if sentences are the same, and 0 if they are different
     s1_id = []
     s2_id = []
     labels = []
@@ -191,7 +205,6 @@ def hand_curated_labels(df_clusters):
     return dataset
 
 
-
 if __name__ == '__main__':
     if torch.cuda.is_available():
         print("### USING GPU:0")
@@ -200,10 +213,6 @@ if __name__ == '__main__':
         print("### USING CPU")
         device = 'cpu'
     
-    # read clusters from train and val
-
-
-    # if labels don't already exist, create them
     if HAND_CURATED:
         train = pd.read_csv(cluster_paths['train'])
         val = pd.read_csv(cluster_paths['val'])
@@ -223,12 +232,14 @@ if __name__ == '__main__':
             t = pd.read_pickle('t.pkl')
             v = pd.read_pickle('v.pkl')
     
-    print("val cns", t['label'].value_counts(), v['label'].value_counts())
+    print("Label distribution of train:", t['label'].value_counts())
+    print("Label distribution of val", v['label'].value_counts())
 
     # Init model
     model = SimplePairWiseClassifier().to(device)
-    criterion = torch.nn.BCEWithLogitsLoss()
+    criterion = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([WEIGHT]).to(device))
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
+    scheduler = StepLR(optimizer, step_size=10, gamma=0.1)
 
     # Train model
     n_epochs = config["epochs"]
@@ -240,7 +251,7 @@ if __name__ == '__main__':
         first_ids = t['s1_id'].values
         second_ids = t['s2_id'].values
         labels = t['label'].values
-        idx = shuffle(list(range(len(first_ids))), random_state=20)
+        idx = shuffle(list(range(len(first_ids))), random_state=50)
         for i in range(0, len(first_ids), batch_size):
             indices = idx[i:i+batch_size]
             
@@ -253,18 +264,20 @@ if __name__ == '__main__':
             optimizer.zero_grad()
             y_pred = model(graph1,graph2 )
             # Compute Loss
-            loss = criterion(y_pred.squeeze(1), batch_labels)
+            #print("labels, preds", batch_labels.shape, y_pred.shape)
+            loss = criterion(y_pred, batch_labels.reshape(-1,1))
             accumulate_loss += loss.item()
             # Backward pass
             loss.backward()
             optimizer.step()
             torch.cuda.empty_cache()
         print('Epoch {}: Train loss: {}'.format(epoch, accumulate_loss))
-        wandb.log({"loss":accumulate_loss})
+        wandb.log({"train loss":accumulate_loss})
 
 
 
         model.eval()
+        accumul_val_loss = 0
         with torch.no_grad():
             first_ids = v['s1_id'].values
             second_ids = v['s2_id'].values
@@ -282,8 +295,8 @@ if __name__ == '__main__':
                 graph1 = torch.tensor(batch_first).float().cuda()
                 graph2 = torch.tensor(batch_second).float().cuda()
                 scores = model(graph1,graph2 )
-                loss = criterion(scores.squeeze(1), batch_labels)
-                print("val loss", loss)
+                loss = criterion(scores, batch_labels.reshape(-1,1))
+                accumul_val_loss += loss.item()
                 all_scores.extend(scores.squeeze())
                 all_labels.extend(batch_labels.to(torch.int))
         
@@ -292,9 +305,13 @@ if __name__ == '__main__':
         strict_preds = (all_scores > 0).to(torch.int)
         eval = Evaluation(strict_preds, all_labels.to(device))
         strict_preds = (all_scores > 0).to(torch.int)
+        wandb.log({"val loss": accumul_val_loss})
+        print("Validation loss for this epoch: ", accumul_val_loss)
         print('Number of predictions: {}/{}'.format(strict_preds.sum(), len(strict_preds)))
         print('Number of positive pairs: {}/{}'.format(len(torch.nonzero(all_labels == 1)),
                                                                 len(all_labels)))
+        f1 = eval.get_f1()
+
         print('Strict - Recall: {}, Precision: {}, F1: {}'.format(eval.get_recall(),
-                                                                eval.get_precision(), eval.get_f1()))
-        
+                                                                eval.get_precision(), f1))
+        wandb.log({"f1": f1})
