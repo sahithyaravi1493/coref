@@ -18,7 +18,7 @@ wandb.init(
   notes="add rgcn",
 
 )
-wandb.run.name = 'rgcn-embeddings'
+wandb.run.name = 'original-coref-classifier'
 
 def combine_ids(dids, sids):
     """
@@ -267,7 +267,7 @@ if __name__ == '__main__':
 
         logger.info('Number of training pairs: {}'.format(total_number_of_pairs))
         logger.info('Accumulate loss: {}'.format(accumulate_loss))
-        wandb.log({'loss': accumulate_loss})
+        wandb.log({'train loss': accumulate_loss})
 
 
         logger.info('Evaluate on the dev set')
@@ -275,6 +275,7 @@ if __name__ == '__main__':
         span_repr.eval()
         span_scorer.eval()
         pairwise_model.eval()
+        accumul_val_loss = 0
 
         all_scores, all_labels = [], []
 
@@ -305,6 +306,8 @@ if __name__ == '__main__':
                                                              graph_embeddings_dev)
 
                     scores = pairwise_model(g1_final, g2_final)
+                    loss = criterion(scores.squeeze(1), batch_labels.to(torch.float))
+                    accumul_val_loss += loss.item()
 
                     if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions']:
                         g1_score = span_scorer(g1)
@@ -326,6 +329,8 @@ if __name__ == '__main__':
         logger.info('Strict - Recall: {}, Precision: {}, F1: {}'.format(eval.get_recall(),
                                                                         eval.get_precision(), eval.get_f1()))
         f1.append(eval.get_f1())
+        wandb.log({"val loss": accumul_val_loss})
+        wandb.log({"f1": eval.get_f1()})
 
         torch.save(span_repr.state_dict(), os.path.join(config['model_path'], 'span_repr_{}'.format(epoch)))
         torch.save(span_scorer.state_dict(), os.path.join(config['model_path'], 'span_scorer_{}'.format(epoch)))

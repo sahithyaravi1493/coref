@@ -1,5 +1,5 @@
 import pandas as pd
-from utils import load_pkl_dump, load_pickle
+from ..utils import load_pkl_dump, load_pickle
 from itertools import combinations
 import torch
 import torch.utils.data as data
@@ -12,11 +12,10 @@ from collections import Counter
 from evaluator import Evaluation
 import wandb
 import os
+from config_sentence_based import *
+from create_pairwise_data import *
 
-# cuda devices
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="2"  # specify which GPU(s) to be used
-
+# Weights and biases logging config
 # wandb 
 os.environ["WANDB_SILENT"] = "true"
 config={"epochs": 20, "batch_size": 1024, "lr":1e-3}
@@ -24,38 +23,29 @@ config={"epochs": 20, "batch_size": 1024, "lr":1e-3}
 wandb.init(
   project="coref-pairwise",
   notes="this is the hand-curated dataset with labels set to 1 if two embeddings are the same",
-  tags=["hand-curated", "train"],
+#   tags=["hand-curated", "train"],
   config=config,
 )
-wandb.run.name = 'node-init-embeddings-test-1'
+wandb.run.name = f'{EMB_TYPE}-embeddings-test-balanced'
 
-# Define all paths
-
-cluster_paths = {
-    'train': '/ubc/cs/research/nlp/sahiravi/datasets/coref/filtered_ecb_corpus_clusters_train.csv',
-    'val':'/ubc/cs/research/nlp/sahiravi/datasets/coref/filtered_ecb_corpus_clusters_dev.csv'
-    }
-
-r_train = load_pkl_dump('/ubc/cs/research/nlp/sahiravi/coref/comet/rgcn_init_val')
-r_val = load_pkl_dump('/ubc/cs/research/nlp/sahiravi/coref/comet/rgcn_init_val')
-s_train = load_pickle('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/sentence_embeddings_train.pkl')
-s_val = load_pickle('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/sentence_embeddings_val.pkl')
-cs_train = load_pickle('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/expansion_embeddings_train.pkl')
-cs_val = load_pickle('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/expansion_embeddings_val.pkl')
-
-# Define params
-WEIGHT = 1
-EMB_TYPE = 'sent' #'sent' or 'rgcn'
+# choose embedding 
 if EMB_TYPE == 'rgcn':
+    # RGCN FINAL LAYER
     INPUT_LAYER = 51*200 #200
     semb_train = r_train
     semb_val = r_val
-else:
+
+elif EMB_TYPE == 'sent':
+    # Initial COMET sentence embeddings
     INPUT_LAYER = 1024
     semb_train = s_train
     semb_val = s_val
+else:
+    # Initial node embeddings - original COMET csk inferences +sentences
+    INPUT_LAYER = 51*1024 
+    semb_train = n_train
+    semb_val = n_val
 
-HAND_CURATED = False
 
 def batch_saved_embeddings(batch_ids, embedding):
     """
@@ -87,25 +77,14 @@ class SimplePairWiseClassifier(nn.Module):
         self.input_layer = INPUT_LAYER
         self.input_layer *= 3
         self.hidden_layer = 1024
-        # self.pairwise_mlp = nn.Sequential(
-        #     nn.Dropout(0.1),
-        #     nn.Linear(self.input_layer, self.hidden_layer*2),
-        #     nn.ReLU(),
-        #     nn.Linear(self.hidden_layer*2, self.hidden_layer),
-        #     nn.Dropout(0.1),
-        #     nn.ReLU(),
-        #     nn.Linear(self.hidden_layer, 1),
-        # )
         self.pairwise_mlp = nn.Sequential(
             nn.Dropout(0.1),
-            nn.Linear(self.input_layer, self.hidden_layer),
-            nn.LeakyReLU(),
-            nn.Linear(self.hidden_layer, 512),
+            nn.Linear(self.input_layer, self.hidden_layer*2),
+            nn.ReLU(),
+            nn.Linear(self.hidden_layer*2, self.hidden_layer),
             nn.Dropout(0.1),
-            nn.LeakyReLU(),
-            nn.Linear(512, 128),
-            nn.LeakyReLU(),
-            nn.Linear(128, 1),
+            nn.ReLU(),
+            nn.Linear(self.hidden_layer, 1),
         )
         self.pairwise_mlp.apply(init_weights)
 
@@ -113,61 +92,6 @@ class SimplePairWiseClassifier(nn.Module):
         return self.pairwise_mlp(torch.cat((first, second, first * second), dim=1))
         #return self.pairwise_mlp(torch.cat((first, second), dim=1))
 
-def create_labels(df_clusters, s):
-    # First find all corefering sentence pairs
-    df_clusters.dropna(subset=['cluster_desc'], how='all', inplace=True)
-    groups = df_clusters.groupby('cluster_id')
-    clus_ids = []
-    s1_id = []
-    s2_id = []
-    s1 = []
-    s2 = []
-    label = []
-    for cluster_id, frame in groups:
-        frame["combined_id"] = frame["doc_id_x"] + "_" + frame["sentence_id_x"].astype(str)
-        # Stick to cluster sizes > 1
-        if frame["combined_id"].nunique() > 1:
-            corefering = frame["combined_id"].values
-            first, second = zip(*list(combinations(range(len(corefering)), 2)))
-            for i,j in zip(first, second):
-                clus_ids.append(frame["cluster_id"].values[i])
-                id1, id2 = frame["combined_id"].values[i], frame["combined_id"].values[j]
-                s1_id.append(id1)
-                s2_id.append(id2)
-                # s1.append(s[id1].squeeze().astype(float))
-                # s2.append(s[id2].squeeze().astype(float))
-                label.append(1)
-
-    # Second find all non-corefering sentence pairs and add to lists
-    unique_cluster_ids = df_clusters["cluster_id"].unique()
-    first, second = zip(*list(combinations(range(len(unique_cluster_ids)), 2)))
-    for i,j in zip(first, second):
-        if i != j:
-            # print(unique_cluster_ids[i], unique_cluster_ids[j])
-            df1 = df_clusters[df_clusters["cluster_id"] == unique_cluster_ids[i]]
-            df2 = df_clusters[df_clusters["cluster_id"] == unique_cluster_ids[j]]
-            min_size = min(len(df1), len(df2))
-            if min_size > 1:
-                f, s = zip(*list(combinations(range(min_size), 2)))
-                for k,l in zip(f,s):
-                    id1, id2 = df1["combined_id"].values[k], df2["combined_id"].values[l]
-                    # if id1 != id2:
-                    clus_ids.append(-1)
-                    
-                    s1_id.append(id1)
-                    s2_id.append(id2)
-                    # s1.append(s[id1].squeeze().astype(float))
-                    # s2.append(s[id2].squeeze().astype(float))
-                    label.append(0)
-                    # break
-            
-
-    dataset = pd.DataFrame()
-    dataset["cid"] = clus_ids
-    dataset["s1_id"] = s1_id
-    dataset["s2_id"] = s1_id
-    dataset["label"] = label
-    return dataset
 
 
 def hand_curated_labels(df_clusters):
@@ -204,7 +128,6 @@ def hand_curated_labels(df_clusters):
     dataset["label"] = labels
     return dataset
 
-
 if __name__ == '__main__':
     if torch.cuda.is_available():
         print("### USING GPU:0")
@@ -212,26 +135,8 @@ if __name__ == '__main__':
     else:
         print("### USING CPU")
         device = 'cpu'
-    
-    if HAND_CURATED:
-        train = pd.read_csv(cluster_paths['train'])
-        val = pd.read_csv(cluster_paths['val'])
-        t = hand_curated_labels(train)
-        v = hand_curated_labels(val)
-        # v = t 
-        # semb_val = semb_train
-    else:
-        if not os.path.exists('t.pkl'):
-            train = pd.read_csv(cluster_paths['train'])
-            val = pd.read_csv(cluster_paths['val'])
-            t = create_labels(train, semb_train)
-            v = create_labels(val, semb_val)
-            t.to_pickle('t.pkl')
-            v.to_pickle('v.pkl')
-        else:
-            t = pd.read_pickle('t.pkl')
-            v = pd.read_pickle('v.pkl')
-    
+
+    t,v = get_pairwise_data()
     print("Label distribution of train:", t['label'].value_counts())
     print("Label distribution of val", v['label'].value_counts())
 
