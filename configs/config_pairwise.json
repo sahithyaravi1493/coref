@@ -1,5 +1,5 @@
 {
-  "gpu_num" : [0],
+  "gpu_num" : [3],
   "bert_tokenizer": "roberta-large",
   "bert_model": "roberta-large",
   "bert_hidden_size": 1024,
@@ -18,28 +18,29 @@
   "use_predicted_topics": false,
   "segment": true,
 
-  "random_seed": 20,
+  "random_seed": 50,
   "epochs": 25,
-  "batch_size": 512,
-  "learning_rate": 1e-3,
-  "weight_decay": 0,
+  "batch_size": 128,
+  "learning_rate": 1e-4,
+  "weight_decay": 1e-1,
   "loss": "bce",
-  "optimizer": "adam",
+  "optimizer": "adamw",
   "adam_epsilon": 1e-8,
   "segment_window": 512,
   "neg_samp": true,
   "exact": false,
 
-  "include_graph": false,
+  "include_graph": true,
   "knowledge_embedding_dimension": 200,
   "relations_per_sentence": 50,
   "exclude_span_repr": true,
   "embedding_type": "rgcn",
   "stored_embeddings_path": "comet/rgcn_hidden",
+  "plot_cosine": false,
 
-  "log_path": "logs/pairwise_scorer/",
+  "log_path": "logs/pairwise_scorer_n/",
   "data_folder": "data/ecb/mentions",
   "span_repr_path": "models/span_scorers/events_span_repr_0",
   "span_scorer_path": "models/span_scorers/events_span_scorer_0",
-  "model_path": "models/pairwise_scorers"
+  "model_path": "models/pairwise_scorers_n"
 }

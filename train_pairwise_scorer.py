@@ -11,6 +11,18 @@ from spans import TopicSpans
 from model_utils import *
 from utils import *
 import wandb
+import os
+import gc
+import torch
+import os
+import collections
+import pandas as pd
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+gc.collect()
+torch.cuda.empty_cache()
+
+
 os.environ["WANDB_SILENT"] = "true"
 
 wandb.init(
@@ -18,7 +30,7 @@ wandb.init(
   notes="add rgcn",
 
 )
-wandb.run.name = 'original-coref-classifier'
+wandb.run.name = f'original-classifier-with-node-embeddings'
 
 def combine_ids(dids, sids):
     """
@@ -192,7 +204,7 @@ if __name__ == '__main__':
     logger.info(pyhocon.HOCONConverter.convert(config, "hocon"))
     create_folder(config['model_path'])
 
-    device = torch.device('cuda:{}'.format(config.gpu_num[0])) if torch.cuda.is_available() else 'cpu'
+    device = torch.device('cuda') if torch.cuda.is_available() else 'cpu'
 
     logger.info('Using device {}'.format(device))
     # init train and dev set
@@ -278,6 +290,8 @@ if __name__ == '__main__':
         accumul_val_loss = 0
 
         all_scores, all_labels = [], []
+        count = collections.defaultdict(set)
+        
 
         for topic_num, topic in enumerate(tqdm(dev_set.topic_list)):
             topic_spans = get_all_candidate_spans(config, bert_model, span_repr, span_scorer, dev_set, topic_num)
@@ -302,6 +316,7 @@ if __name__ == '__main__':
                     # calculate the keys to look up graph embeddings for this batch
                     combined_ids1 = [topic_spans.combined_ids[k] for k in first_idx]
                     combined_ids2 = [topic_spans.combined_ids[k] for k in second_idx]
+                    
                     g1_final, g2_final = graph_final_vectors(combined_ids1, combined_ids2, config, g1, g2,
                                                              graph_embeddings_dev)
 
@@ -309,16 +324,32 @@ if __name__ == '__main__':
                     loss = criterion(scores.squeeze(1), batch_labels.to(torch.float))
                     accumul_val_loss += loss.item()
 
+                    # analysis
+                    counting = (list(zip(combined_ids1, combined_ids2, batch_labels.cpu().detach().numpy())))
+                    for c1,c2,l in counting:
+                        count[(c1,c2)].add(l)
+                    
+                    if config['plot_cosine']:
+                        plot_this_batch(g1_final, g2_final, batch_labels.to(torch.float))
+                  
+                        
+
                     if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions']:
                         g1_score = span_scorer(g1)
                         g2_score = span_scorer(g2)
                         scores += g1_score + g2_score
-
+  
                     all_scores.extend(scores.squeeze(1))
                     all_labels.extend(batch_labels.to(torch.int))
+                    torch.cuda.empty_cache()
 
         all_labels = torch.stack(all_labels)
         all_scores = torch.stack(all_scores)
+
+        count_df = pd.DataFrame({'pairs' : count.keys() , 'label_set' : count.values() })
+        count_df['Length'] = count_df['label_set'].str.len()
+        print("In validation set, # of labels per pair", count_df['Length'].value_counts())
+
 
 
         strict_preds = (all_scores > 0).to(torch.int)

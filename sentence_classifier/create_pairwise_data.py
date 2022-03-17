@@ -12,6 +12,7 @@ def create_labels(df_clusters, balance=False):
     s1 = []
     s2 = []
     label = []
+    seen = set()
     for cluster_id, frame in groups:
         frame["combined_id"] = frame["doc_id_x"] + "_" + frame["sentence_id_x"].astype(str)
         # Stick to cluster sizes > 1
@@ -26,8 +27,10 @@ def create_labels(df_clusters, balance=False):
                 # s1.append(s[id1].squeeze().astype(float))
                 # s2.append(s[id2].squeeze().astype(float))
                 label.append(1)
+                seen.add((id1, id2))
 
     # Second find all non-corefering sentence pairs and add to lists
+    conflicting = set()
     unique_cluster_ids = df_clusters["cluster_id"].unique()
     first, second = zip(*list(combinations(range(len(unique_cluster_ids)), 2)))
     for i,j in zip(first, second):
@@ -41,14 +44,17 @@ def create_labels(df_clusters, balance=False):
                 for k,l in zip(f,s):
                     id1, id2 = df1["combined_id"].values[k], df2["combined_id"].values[l]
                     # if id1 != id2:
-                    clus_ids.append(-1)
                     
-                    s1_id.append(id1)
-                    s2_id.append(id2)
-                    # s1.append(s[id1].squeeze().astype(float))
-                    # s2.append(s[id2].squeeze().astype(float))
-                    label.append(0)
-                    # break
+                    if (id1, id2) not in seen:
+                        clus_ids.append(-1)
+                        s1_id.append(id1)
+                        s2_id.append(id2)
+                        # s1.append(s[id1].squeeze().astype(float))
+                        # s2.append(s[id2].squeeze().astype(float))
+                        label.append(0)
+                        # break
+                    else:
+                        conflicting.add((id1, id2))
             
 
     dataset = pd.DataFrame()
@@ -56,6 +62,7 @@ def create_labels(df_clusters, balance=False):
     dataset["s1_id"] = s1_id
     dataset["s2_id"] = s2_id
     dataset["label"] = label
+    print("CONFLICTS", len(conflicting))
     if balance:
         g = dataset.groupby('label')
         g = pd.DataFrame(g.apply(lambda x: x.sample(g.size().min()).reset_index(drop=True)))

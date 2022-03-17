@@ -27,6 +27,8 @@ cs_train = load_pickle('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_ex
 cs_val = load_pickle('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/expansion_embeddings_val.pkl')
 
 # Define model parameters
+config={"epochs": 10, "batch_size": 512, "lr":1e-4}
+
 # weight used for increasing the importance of positive examples in the loss function
 WEIGHT = 1
 
@@ -41,7 +43,7 @@ HAND_CURATED = False
 'rgcn' = rgcn final hidden layer  50 *200
 'node' = initial node embeddings composed of csk nodes and sentence nodes 50*1024
 """
-EMB_TYPE = 'sent'
+EMB_TYPE = 'node'
 
 
 # cuda devices

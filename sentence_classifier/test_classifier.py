@@ -1,5 +1,6 @@
+from config_sentence_based import *
+
 import pandas as pd
-from ..utils import load_pkl_dump, load_pickle
 from itertools import combinations
 import torch
 import torch.utils.data as data
@@ -12,21 +13,18 @@ from collections import Counter
 from evaluator import Evaluation
 import wandb
 import os
-from config_sentence_based import *
 from create_pairwise_data import *
 
 # Weights and biases logging config
 # wandb 
 os.environ["WANDB_SILENT"] = "true"
-config={"epochs": 20, "batch_size": 1024, "lr":1e-3}
-
 wandb.init(
   project="coref-pairwise",
   notes="this is the hand-curated dataset with labels set to 1 if two embeddings are the same",
 #   tags=["hand-curated", "train"],
   config=config,
 )
-wandb.run.name = f'{EMB_TYPE}-embeddings-test-balanced'
+wandb.run.name = f'sentence-pair-model-with-{EMB_TYPE}-embeddings-noconf'
 
 # choose embedding 
 if EMB_TYPE == 'rgcn':
@@ -57,7 +55,7 @@ def batch_saved_embeddings(batch_ids, embedding):
     """
     batch_embeddings = []
     for ind in batch_ids:
-        if EMB_TYPE == "rgcn":
+        if EMB_TYPE == "rgcn" or EMB_TYPE == "node":
             out = embedding[ind]
         else:
             # sentence embeddings are stored as a dataframe, so use .loc
@@ -78,11 +76,11 @@ class SimplePairWiseClassifier(nn.Module):
         self.input_layer *= 3
         self.hidden_layer = 1024
         self.pairwise_mlp = nn.Sequential(
-            nn.Dropout(0.1),
+            nn.Dropout(0.3),
             nn.Linear(self.input_layer, self.hidden_layer*2),
             nn.ReLU(),
             nn.Linear(self.hidden_layer*2, self.hidden_layer),
-            nn.Dropout(0.1),
+            nn.Dropout(0.3),
             nn.ReLU(),
             nn.Linear(self.hidden_layer, 1),
         )
@@ -136,14 +134,15 @@ if __name__ == '__main__':
         print("### USING CPU")
         device = 'cpu'
 
-    t,v = get_pairwise_data()
+    t,v = get_pairwise_data(balance=BALANCE)
     print("Label distribution of train:", t['label'].value_counts())
     print("Label distribution of val", v['label'].value_counts())
+    print(v.groupby(['s1_id', 's2_id']).size())
 
     # Init model
     model = SimplePairWiseClassifier().to(device)
     criterion = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([WEIGHT]).to(device))
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config["lr"], weight_decay=1e-1)
     scheduler = StepLR(optimizer, step_size=10, gamma=0.1)
 
     # Train model

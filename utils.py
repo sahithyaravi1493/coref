@@ -2,6 +2,7 @@ import collections
 import logging
 import os
 import torch
+import torch.nn as nn
 import random
 import numpy as np
 import pandas as pd
@@ -14,7 +15,8 @@ import pickle
 
 from corpus import Corpus
 
-
+import plotly.express as px
+import plotly.figure_factory as ff
 
 def create_corpus(config, tokenizer, split_name, is_training=True):
     docs_path = os.path.join(config.data_folder, split_name + '.json')
@@ -196,7 +198,7 @@ def load_pickle(filepath):
 
 
 def load_stored_embeddings(config, split):
-    if config.embedding_type == "rgcn":
+    if config.embedding_type == "rgcn" or config.embedding_type == "node":
         embedding = load_pkl_dump(f"{config.stored_embeddings_path}_{split}")
         return embedding
     else:
@@ -214,7 +216,7 @@ def batch_saved_embeddings(batch_ids, config, embedding):
     """
     batch_embeddings = []
     for ind in batch_ids:
-        if config.embedding_type == "rgcn":
+        if config.embedding_type == "rgcn" or config.embedding_type == "node":
             out = embedding[ind]
         else:
             # sentence embeddings are stored as a dataframe, so use .loc
@@ -222,3 +224,21 @@ def batch_saved_embeddings(batch_ids, config, embedding):
         batch_embeddings.append([out])
         #print(out.shape)
     return np.array(batch_embeddings).reshape(len(batch_embeddings), -1)
+
+
+
+def plot_this_batch(g1, g2, batch_labels):
+    cos = nn.CosineSimilarity(dim=1, eps=1e-8)
+    output = cos(g1, g2)
+    g1 = g1.cpu().detach().numpy()
+    g2 = g2.cpu().detach().numpy()
+    output = output.cpu().detach().numpy()
+    print(output.shape)
+    batch_labels = batch_labels.cpu().detach().numpy()
+    pos_indices = np.where(batch_labels == 1)[0]
+    neg_indices = np.where(batch_labels == 0)[0]
+    print(len(pos_indices),len(neg_indices))
+    if len(pos_indices) > 1 and len(neg_indices)>1:
+        fig = ff.create_distplot([output[pos_indices], output[neg_indices]], ['corefering pairs', 'non-corefering pairs'])
+        fig.update_layout(title_text='Cosine similarity of sentence embeddings(COMET)')
+        fig.show()
