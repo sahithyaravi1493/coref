@@ -43,7 +43,7 @@ HAND_CURATED = False
 'rgcn' = rgcn final hidden layer  50 *200
 'node' = initial node embeddings composed of csk nodes and sentence nodes 50*1024
 """
-EMB_TYPE = 'node'
+EMB_TYPE = 'rgcn'
 
 
 # cuda devices

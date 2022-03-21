@@ -22,12 +22,13 @@ def create_labels(df_clusters, balance=False):
             for i,j in zip(first, second):
                 clus_ids.append(frame["cluster_id"].values[i])
                 id1, id2 = frame["combined_id"].values[i], frame["combined_id"].values[j]
-                s1_id.append(id1)
-                s2_id.append(id2)
-                # s1.append(s[id1].squeeze().astype(float))
-                # s2.append(s[id2].squeeze().astype(float))
-                label.append(1)
-                seen.add((id1, id2))
+                if (id1, id2) not in seen:
+                    s1_id.append(id1)
+                    s2_id.append(id2)
+                    # s1.append(s[id1].squeeze().astype(float))
+                    # s2.append(s[id2].squeeze().astype(float))
+                    label.append(1)
+                    seen.add((id1, id2))
 
     # Second find all non-corefering sentence pairs and add to lists
     conflicting = set()

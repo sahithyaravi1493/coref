@@ -36,7 +36,7 @@
   "exclude_span_repr": true,
   "embedding_type": "rgcn",
   "stored_embeddings_path": "comet/rgcn_hidden",
-  "plot_cosine": false,
+  "plot_cosine": true,
 
   "log_path": "logs/pairwise_scorer_n/",
   "data_folder": "data/ecb/mentions",
