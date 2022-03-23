@@ -30,13 +30,17 @@
   "neg_samp": true,
   "exact": false,
 
-  "include_graph": true,
+  "include_graph": false,
   "knowledge_embedding_dimension": 200,
   "relations_per_sentence": 50,
   "exclude_span_repr": true,
   "embedding_type": "rgcn",
   "stored_embeddings_path": "comet/rgcn_hidden",
   "plot_cosine": true,
+  
+  "include_text": true,
+  "topk":5,
+  "expansion_dimension":2048,
 
   "log_path": "logs/pairwise_scorer_n/",
   "data_folder": "data/ecb/mentions",

@@ -45,44 +45,9 @@ def combine_ids(dids, sids):
     return combined_ids
 
 
-def graph_final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embeddings):
-    """
-    if include_graph is set to false, returns the span embeddings
-    if include_graph is set to true, returns the graph and/ span embeddings
-
-    @param first_batch_ids: keys of first batch
-    @param second_batch_ids: keys of second batch
-    @param config: configuration variables
-    @param span1: span1 embeddings
-    @param span2: span2 embeddings
-    @param embeddings: dict with all knowledge embeddings, we will look up the ids in this dict
-    @return:
-    """
-    # print("spans", span1.size(), span2.size())
-    if not config.include_graph:
-        # if graph is not included, just use spans
-        return span1, span2
-    else:
-        # if graph is included, load the saved embeddings for this batch
-        graph1 = batch_saved_embeddings(first_batch_ids, config, embeddings)
-        graph2 = batch_saved_embeddings(second_batch_ids, config, embeddings)
-        graph1 = torch.tensor(graph1).float().cuda()
-        graph2 = torch.tensor(graph2).float().cuda()
-
-        if config.exclude_span_repr:
-            # if this is set to true, we exclude spans entirely and only use graph
-            g1_new, g2_new = graph1, graph2
-        else:
-            # Concatenate span + graph
-
-            g1_new = torch.cat((span1, graph1), axis=1)
-            g2_new = torch.cat((span2, graph2), axis=1)
-
-    return g1_new, g2_new
-
 def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, span_embeddings,
                                     first, second, labels, batch_size, criterion, optimizer, combined_indices,
-                              graph_embeddings):
+                              graph_embeddings, span_expansion_embeddings):
     accumulate_loss = 0
     start_end_embeddings, continuous_embeddings, width = span_embeddings
     device = start_end_embeddings.device
@@ -104,8 +69,12 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
         # the look up keys are combined ids we calculated earlier of the form docid_sentenceid
         combined1 = [combined_indices[k] for k in batch_first]
         combined2 = [combined_indices[k] for k in batch_second]
-        g1_final, g2_final = graph_final_vectors(combined1, combined2, config,
-                                                 g1, g2, graph_embeddings)
+
+        e1 = [span_expansion_embeddings[k] for k in batch_first]
+        e2 = [span_expansion_embeddings[k] for k in batch_second]
+
+        g1_final, g2_final = final_vectors(combined1, combined2, config,
+                                                 g1, g2, graph_embeddings,e1, e2)
         # print(g1_final.size(), g2_final.size)
 
         scores = pairwise_model(g1_final, g2_final)
@@ -125,7 +94,7 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
     return accumulate_loss
 
 
-def get_all_candidate_spans(config, bert_model, span_repr, span_scorer, data, topic_num):
+def get_all_candidate_spans(config, bert_model, span_repr, span_scorer, data, topic_num, bert_tokenizer=None, expansions=None, expansion_embeddings=None):
     docs_embeddings, docs_length = pad_and_read_bert(data.topics_bert_tokens[topic_num], bert_model)
     topic_spans = TopicSpans(config, data, topic_num, docs_embeddings, docs_length, is_training=True)
 
@@ -154,7 +123,12 @@ def get_all_candidate_spans(config, bert_model, span_repr, span_scorer, data, to
     s_ids = topic_spans.sentence_id.squeeze().numpy().astype(str).tolist()
     # combined_ids holds the keys for looking up graph/node embeddings
     topic_spans.combined_ids = combine_ids(d_ids, s_ids)
-    torch.cuda.empty_cache()
+    if config.include_text:
+        span_specific_embeddings, span_specific_expansions = get_span_specific_embeddings(topic_spans.start_end_embeddings, topic_spans.combined_ids, bert_model, bert_tokenizer, expansions, expansion_embeddings)
+        topic_spans.span_expansions = span_specific_expansions
+        topic_spans.span_expansion_embeddings = span_specific_embeddings
+    
+        # print(topic_spans.span_expansions)
 
     return topic_spans
 
@@ -214,11 +188,20 @@ if __name__ == '__main__':
 
     graph_embeddings_train = None
     graph_embeddings_dev = None
+    expansions_train = None
+    expansions_val = None
+    expansion_embeddings_train = None
+    expansion_embeddings_val = None
 
     if config.include_graph:
         graph_embeddings_train = load_stored_embeddings(config, split='train')
         graph_embeddings_dev = load_stored_embeddings(config, split='val')
 
+    if config.include_text:
+        expansions_train = load_json(f"comet/train_exp_sentences.json")
+        expansions_val = load_json(f"comet/val_exp_sentences.json")
+        expansion_embeddings_train = load_pkl_dump(f"comet/train_exp_embeddings")
+        expansion_embeddings_val = load_pkl_dump(f"comet/val_exp_embeddings")
     ## Model initiation
     logger.info('Init models')
     bert_model = AutoModel.from_pretrained(config['bert_model']).to(device)
@@ -266,12 +249,12 @@ if __name__ == '__main__':
         total_number_of_pairs = 0
         for topic_num in tqdm(list_of_topics):
             topic = training_set.topic_list[topic_num]
-            topic_spans = get_all_candidate_spans(config, bert_model, span_repr, span_scorer, training_set, topic_num)
+            topic_spans = get_all_candidate_spans(config, bert_model, span_repr, span_scorer, training_set, topic_num, bert_tokenizer, expansions_train, expansion_embeddings_train)
             first, second, pairwise_labels = get_pairwise_labels(topic_spans.labels, is_training=config['neg_samp'])
             span_embeddings = topic_spans.start_end_embeddings, topic_spans.continuous_embeddings, topic_spans.width
             loss = train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, span_embeddings, first,
                                             second, pairwise_labels, config['batch_size'], criterion, optimizer,
-                                             topic_spans.combined_ids, graph_embeddings_train
+                                             topic_spans.combined_ids, graph_embeddings_train, topic_spans.span_expansion_embeddings
                                              )
             torch.cuda.empty_cache()
             accumulate_loss += loss
@@ -294,7 +277,7 @@ if __name__ == '__main__':
         
 
         for topic_num, topic in enumerate(tqdm(dev_set.topic_list)):
-            topic_spans = get_all_candidate_spans(config, bert_model, span_repr, span_scorer, dev_set, topic_num)
+            topic_spans = get_all_candidate_spans(config, bert_model, span_repr, span_scorer, dev_set, topic_num, bert_tokenizer, expansions_val, expansion_embeddings_val)
             # logger.info('Topic: {}'.format(topic_num))
             # logger.info('Num of labels: {}'.format(len(topic_spans.labels)))
             first, second, pairwise_labels = get_pairwise_labels(topic_spans.labels, is_training=False)
@@ -302,6 +285,19 @@ if __name__ == '__main__':
             span_embeddings = topic_spans.start_end_embeddings, topic_spans.continuous_embeddings, \
                               topic_spans.width
             topic_spans.width = topic_spans.width.to(device)
+
+            # Plot the cosine similarity of embeddings for this topic
+            if config['plot_cosine']:
+                c1 = [topic_spans.combined_ids[k] for k in first]
+                c2 = [topic_spans.combined_ids[k] for k in second]
+                e1 = [topic_spans.span_expansion_embeddings[k] for k in first]
+                e2 = [topic_spans.span_expansion_embeddings[k] for k in second]
+                gr1, gr2 = final_vectors(c1, c2, config, None, None,
+                                                                graph_embeddings_dev, e1, e2)
+            
+                plot_this_batch(gr1, gr2, pairwise_labels.to(torch.float))
+
+
             with torch.no_grad():
                 for i in range(0, len(first), 10000):
                     end_max = i + 10000
@@ -316,9 +312,12 @@ if __name__ == '__main__':
                     # calculate the keys to look up graph embeddings for this batch
                     combined_ids1 = [topic_spans.combined_ids[k] for k in first_idx]
                     combined_ids2 = [topic_spans.combined_ids[k] for k in second_idx]
+                    e1 = [topic_spans.span_expansion_embeddings[k] for k in first_idx]
+                    e2 = [topic_spans.span_expansion_embeddings[k] for k in second_idx]
                     
-                    g1_final, g2_final = graph_final_vectors(combined_ids1, combined_ids2, config, g1, g2,
-                                                             graph_embeddings_dev)
+                    g1_final, g2_final = final_vectors(combined_ids1, combined_ids2, config, g1, g2,
+                                                             graph_embeddings_dev, e1, e2)
+                    
 
                     scores = pairwise_model(g1_final, g2_final)
                     loss = criterion(scores.squeeze(1), batch_labels.to(torch.float))
@@ -329,8 +328,8 @@ if __name__ == '__main__':
                     for c1,c2,l in counting:
                         count[(c1,c2)].add(l)
                     
-                    if config['plot_cosine']:
-                        plot_this_batch(g1_final, g2_final, batch_labels.to(torch.float))
+                    # if config['plot_cosine']:
+                    #     plot_this_batch(g1_final, g2_final, batch_labels.to(torch.float))
                   
                         
 

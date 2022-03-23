@@ -12,8 +12,8 @@ from transformers import AdamW, get_linear_schedule_with_warmup
 import json
 from datetime import datetime
 import pickle
-
 from corpus import Corpus
+from tqdm import tqdm
 
 import plotly.express as px
 import plotly.figure_factory as ff
@@ -242,3 +242,100 @@ def plot_this_batch(g1, g2, batch_labels):
         fig = ff.create_distplot([output[pos_indices], output[neg_indices]], ['corefering pairs', 'non-corefering pairs'])
         fig.update_layout(title_text='Cosine similarity of sentence embeddings(COMET)')
         fig.show()
+
+
+def load_json(filepath):
+    with open(filepath, 'r') as fp:
+        file = json.loads(fp.read())
+    return file
+
+
+def save_json(filename, data):
+    with open(filename, 'w') as fpp:
+        json.dump(data, fpp)
+
+
+def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embeddings, e1, e2):
+    """
+    if include_graph is set to false, returns the span embeddings
+    if include_graph is set to true, returns the graph and/ span embeddings
+
+    @param first_batch_ids: keys of first batch
+    @param second_batch_ids: keys of second batch
+    @param config: configuration variables
+    @param span1: span1 embeddings
+    @param span2: span2 embeddings
+    @param embeddings: dict with all knowledge embeddings, we will look up the ids in this dict
+    @return:
+    """
+    # print("spans", span1.size(), span2.size())
+    if not config.include_graph and not config.include_text:
+        # if graph is not included, just use spans
+        return span1, span2
+
+    elif config.include_text:
+        if config.exclude_span_repr:
+            # if this is set to true, we exclude spans entirely and only use expansion embeddings
+            # print(len(e1))
+            g1_new, g2_new = torch.vstack(e1).float().cuda(), torch.vstack(e2).float().cuda()
+        else:
+            # Concatenate span + expansions
+
+            g1_new = torch.cat((span1, e1), axis=1)
+            g2_new = torch.cat((span2, e2), axis=1)
+
+    else:
+        # if graph is included, load the saved embeddings for this batch
+        graph1 = batch_saved_embeddings(first_batch_ids, config, embeddings)
+        graph2 = batch_saved_embeddings(second_batch_ids, config, embeddings)
+        graph1 = torch.tensor(graph1).float().cuda()
+        graph2 = torch.tensor(graph2).float().cuda()
+
+        if config.exclude_span_repr:
+            # if this is set to true, we exclude spans entirely and only use graph
+            g1_new, g2_new = graph1, graph2
+        else:
+            # Concatenate span + graph
+
+            g1_new = torch.cat((span1, graph1), axis=1)
+            g2_new = torch.cat((span2, graph2), axis=1)
+    #print(g1_new.shape)
+    return g1_new, g2_new
+
+
+def get_span_specific_embeddings(span_start_end_embeddings, combined_ids, bert_model, bert_tokenizer, all_expansions, all_expansion_embeddings):
+
+    #print("Span specific embeddings calculation")
+    cos = nn.CosineSimilarity(dim=1, eps=1e-8)
+
+    fine_grained_expansions = []
+    fine_grained_embeddings = []
+    
+
+    for i in (range(len(combined_ids))):
+        # Look up inferences of a particular sentence
+        key = combined_ids[i]
+        expansions = np.array(all_expansions[key])
+        candidate_tensors = torch.tensor(all_expansion_embeddings[key]).cuda()
+        # find the top 5 expacnsion embeddings that are similar to the span
+        span = span_start_end_embeddings[i].reshape(1, -1)
+        # print(span)
+
+        distances = cos(candidate_tensors, span)
+        values,indices = distances.topk(5)
+        # print(values, indices)
+        final_selection = candidate_tensors[indices].reshape(1,-1).squeeze()
+        final_expansions = expansions[indices.cpu().detach().numpy()]
+        fine_grained_embeddings.append(final_selection)
+        fine_grained_expansions.append(final_expansions)
+
+    return fine_grained_embeddings, fine_grained_expansions
+
+
+
+        
+
+            
+
+            
+

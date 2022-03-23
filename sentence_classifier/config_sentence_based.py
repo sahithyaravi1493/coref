@@ -1,7 +1,7 @@
 import sys, os
 sys.path.append('/ubc/cs/research/nlp/sahiravi/coref')
 
-from utils import load_pkl_dump, load_pickle
+from utils import load_pkl_dump, load_pickle, load_json
 import wandb
 
 # Where all clusters are saved
@@ -9,6 +9,11 @@ cluster_paths = {
     'train': '/ubc/cs/research/nlp/sahiravi/datasets/coref/filtered_ecb_corpus_clusters_train.csv',
     'val':'/ubc/cs/research/nlp/sahiravi/datasets/coref/filtered_ecb_corpus_clusters_dev.csv'
     }
+
+# Where all original inferences are found
+expansions_train = load_json('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/expansions_train.json')
+expansions_val = load_json('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/expansions_val.json')
+
 
 # initial rgcn embeddings
 n_train = load_pkl_dump('/ubc/cs/research/nlp/sahiravi/coref/comet/rgcn_init_train')
