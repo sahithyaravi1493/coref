@@ -24,7 +24,7 @@ torch.cuda.empty_cache()
 
 
 os.environ["WANDB_SILENT"] = "true"
-
+wandb.login(key='')
 wandb.init(
   project="coref-pairwise",
   notes="add rgcn",
