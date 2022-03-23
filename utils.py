@@ -319,7 +319,7 @@ def get_span_specific_embeddings(span_start_end_embeddings, combined_ids, bert_m
         candidate_tensors = torch.tensor(all_expansion_embeddings[key]).cuda()
         # find the top 5 expacnsion embeddings that are similar to the span
         span = span_start_end_embeddings[i].reshape(1, -1)
-        # print(span)
+        #print(span)
 
         distances = cos(candidate_tensors, span)
         values,indices = distances.topk(5)

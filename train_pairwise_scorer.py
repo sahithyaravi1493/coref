@@ -82,7 +82,8 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
         if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions']:
             g1_score = span_scorer(g1)
             g2_score = span_scorer(g2)
-            scores += g1_score + g2_score
+            if not config['exclude_span_repr']:
+                scores += g1_score + g2_score
 
         loss = criterion(scores.squeeze(1), batch_labels)
         accumulate_loss += loss.item()
@@ -123,12 +124,12 @@ def get_all_candidate_spans(config, bert_model, span_repr, span_scorer, data, to
     s_ids = topic_spans.sentence_id.squeeze().numpy().astype(str).tolist()
     # combined_ids holds the keys for looking up graph/node embeddings
     topic_spans.combined_ids = combine_ids(d_ids, s_ids)
+    # print(len(topic_spans.span_texts), len(topic_spans.combined_ids), len(d_ids), len(s_ids))
+
     if config.include_text:
         span_specific_embeddings, span_specific_expansions = get_span_specific_embeddings(topic_spans.start_end_embeddings, topic_spans.combined_ids, bert_model, bert_tokenizer, expansions, expansion_embeddings)
         topic_spans.span_expansions = span_specific_expansions
         topic_spans.span_expansion_embeddings = span_specific_embeddings
-    
-        # print(topic_spans.span_expansions)
 
     return topic_spans
 
@@ -275,9 +276,18 @@ if __name__ == '__main__':
         all_scores, all_labels = [], []
         count = collections.defaultdict(set)
         
-
+        all_spans = []
+        all_span_expansions = []
+        all_lookups = []
         for topic_num, topic in enumerate(tqdm(dev_set.topic_list)):
             topic_spans = get_all_candidate_spans(config, bert_model, span_repr, span_scorer, dev_set, topic_num, bert_tokenizer, expansions_val, expansion_embeddings_val)
+            # exps = topic_spans.span_expansions
+            # texts = [topic_spans.span_texts[k] for k in first]
+            all_spans = topic_spans.span_texts
+            all_span_expansions = topic_spans.span_expansions
+            all_lookups = topic_spans.combined_ids
+            
+            
             # logger.info('Topic: {}'.format(topic_num))
             # logger.info('Num of labels: {}'.format(len(topic_spans.labels)))
             first, second, pairwise_labels = get_pairwise_labels(topic_spans.labels, is_training=False)
@@ -294,7 +304,7 @@ if __name__ == '__main__':
                 e2 = [topic_spans.span_expansion_embeddings[k] for k in second]
                 gr1, gr2 = final_vectors(c1, c2, config, None, None,
                                                                 graph_embeddings_dev, e1, e2)
-            
+
                 plot_this_batch(gr1, gr2, pairwise_labels.to(torch.float))
 
 
@@ -348,6 +358,19 @@ if __name__ == '__main__':
         count_df = pd.DataFrame({'pairs' : count.keys() , 'label_set' : count.values() })
         count_df['Length'] = count_df['label_set'].str.len()
         print("In validation set, # of labels per pair", count_df['Length'].value_counts())
+
+        df_span = pd.DataFrame()
+        df_span['combined_id'] = all_lookups
+        df_span['spans'] = all_spans
+        df_span['exps'] = all_span_expansions
+        # df_span.drop_duplicates(subset='spans', keep="last")
+        
+        sents = '/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_dev.csv'
+        if os.path.exists(sents):
+            df_sents = pd.read_csv(sents)
+            df_span = df_span.merge(df_sents,on='combined_id')
+        df_span.to_csv('span_examples.csv')
+
 
 
 

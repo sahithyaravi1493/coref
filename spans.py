@@ -116,21 +116,21 @@ class TopicSpans:
             self.num_tokens += len(original_tokens)
             sentence_span, original_candidates, bert_candidates = self.get_docs_candidate(original_tokens, bert_start_end)
             original_candidate_starts, original_candidate_ends = original_candidates
+            sid_list = sentence_span.tolist()
             start_list = original_candidate_starts.tolist()
             end_list = original_candidate_ends.tolist()
-            original_token_ids = [x[1] for x in original_tokens]
+            keys = [(x[0],x[1]) for x in original_tokens]
             original_token_texts = [x[2] for x in original_tokens]
-            lookup = dict(zip(original_token_ids, original_token_texts))
+            lookup = dict(zip(keys, original_token_texts))
             spans = []
-            for start, end in zip(start_list, end_list):
+            for start, end, sid in zip(start_list, end_list, sid_list):
                 text = ""
                 for idx in range(start, end+1):
-                    if idx in lookup:
-                        text += lookup[idx] + " "
+                    if (sid, idx) in lookup:
+                        text += lookup[(sid, idx)] + " "
                 spans.append(text)
 
             self.span_texts.extend(spans)
-
             #token_text = np.asarray([x[2] for x in original_tokens])
 
 
@@ -188,6 +188,8 @@ class TopicSpans:
         self.bert_end = self.bert_end[indices]
 
         self.labels = self.labels[indices]
+        self.span_texts = [self.span_texts[k] for k in indices]
+
 
         # embeddings
         if len(self.start_end_embeddings) > 0:
