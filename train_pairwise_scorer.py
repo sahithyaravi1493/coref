@@ -19,18 +19,19 @@ import collections
 import pandas as pd
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"
-gc.collect()
-torch.cuda.empty_cache()
+# gc.collect()
+# torch.cuda.empty_cache()
 
 
 os.environ["WANDB_SILENT"] = "true"
 wandb.login(key='')
 wandb.init(
-  project="coref-pairwise",
-  notes="add rgcn",
+    project="coref-pairwise",
+    notes="add rgcn",
 
 )
 wandb.run.name = f'original-classifier-with-node-embeddings'
+
 
 def combine_ids(dids, sids):
     """
@@ -46,7 +47,7 @@ def combine_ids(dids, sids):
 
 
 def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, span_embeddings,
-                                    first, second, labels, batch_size, criterion, optimizer, combined_indices,
+                              first, second, labels, batch_size, criterion, optimizer, combined_indices,
                               graph_embeddings, span_expansion_embeddings):
     accumulate_loss = 0
     start_end_embeddings, continuous_embeddings, width = span_embeddings
@@ -61,20 +62,23 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
         batch_labels = labels[indices].to(torch.float)
         optimizer.zero_grad()
         g1 = span_repr(start_end_embeddings[batch_first],
-                                [continuous_embeddings[k] for k in batch_first], width[batch_first])
+                       [continuous_embeddings[k] for k in batch_first], width[batch_first])
         g2 = span_repr(start_end_embeddings[batch_second],
-                                [continuous_embeddings[k] for k in batch_second], width[batch_second])
+                       [continuous_embeddings[k] for k in batch_second], width[batch_second])
 
         # calculate the keys to look up graph embeddings for this batch
         # the look up keys are combined ids we calculated earlier of the form docid_sentenceid
         combined1 = [combined_indices[k] for k in batch_first]
         combined2 = [combined_indices[k] for k in batch_second]
 
-        e1 = [span_expansion_embeddings[k] for k in batch_first]
-        e2 = [span_expansion_embeddings[k] for k in batch_second]
+        e1 = None
+        e2 = None
+        if config.include_text:
+            e1 = [span_expansion_embeddings[k] for k in batch_first]
+            e2 = [span_expansion_embeddings[k] for k in batch_second]
 
         g1_final, g2_final = final_vectors(combined1, combined2, config,
-                                                 g1, g2, graph_embeddings,e1, e2)
+                                           g1, g2, graph_embeddings, e1, e2)
         # print(g1_final.size(), g2_final.size)
 
         scores = pairwise_model(g1_final, g2_final)
@@ -90,18 +94,19 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
         loss.backward()
         optimizer.step()
 
-        torch.cuda.empty_cache()
 
     return accumulate_loss
 
 
 def get_all_candidate_spans(config, bert_model, span_repr, span_scorer, data, topic_num, bert_tokenizer=None, expansions=None, expansion_embeddings=None):
-    docs_embeddings, docs_length = pad_and_read_bert(data.topics_bert_tokens[topic_num], bert_model)
-    topic_spans = TopicSpans(config, data, topic_num, docs_embeddings, docs_length, is_training=True)
+    docs_embeddings, docs_length = pad_and_read_bert(
+        data.topics_bert_tokens[topic_num], bert_model)
+    topic_spans = TopicSpans(config, data, topic_num,
+                             docs_embeddings, docs_length, is_training=True)
 
     topic_spans.set_span_labels()
 
-    ## Pruning the spans according to gold mentions or spans with highiest scores
+    # Pruning the spans according to gold mentions or spans with highiest scores
     if config['use_gold_mentions']:
         span_indices = torch.nonzero(topic_spans.labels).squeeze(1)
     else:
@@ -115,7 +120,8 @@ def get_all_candidate_spans(config, bert_model, span_repr, span_scorer, data, to
             span_indices = torch.where(span_scores > 0)[0]
         else:
             k = int(config['top_k'] * topic_spans.num_tokens)
-            _, span_indices = torch.topk(span_scores.squeeze(1), k, sorted=False)
+            _, span_indices = torch.topk(
+                span_scores.squeeze(1), k, sorted=False)
 
     span_indices = span_indices.cpu()
     topic_spans.prune_spans(span_indices)
@@ -127,7 +133,9 @@ def get_all_candidate_spans(config, bert_model, span_repr, span_scorer, data, to
     # print(len(topic_spans.span_texts), len(topic_spans.combined_ids), len(d_ids), len(s_ids))
 
     if config.include_text:
-        span_specific_embeddings, span_specific_expansions = get_span_specific_embeddings(topic_spans.start_end_embeddings, topic_spans.combined_ids, bert_model, bert_tokenizer, expansions, expansion_embeddings)
+        span_emb_final = span_emb[span_indices]
+        span_specific_embeddings, span_specific_expansions = get_span_specific_embeddings(topic_spans.start_end_embeddings, topic_spans.combined_ids, span_repr, expansions, expansion_embeddings,
+                                                                                          span_emb_final, config)
         topic_spans.span_expansions = span_specific_expansions
         topic_spans.span_expansion_embeddings = span_specific_embeddings
 
@@ -150,28 +158,28 @@ def get_pairwise_labels(labels, is_training):
         sampled_negatives = negatives[torch.nonzero(rands).squeeze()]
         new_first = torch.cat((first[positives], first[sampled_negatives]))
         new_second = torch.cat((second[positives], second[sampled_negatives]))
-        new_labels = torch.cat((pairwise_labels[positives], pairwise_labels[sampled_negatives]))
+        new_labels = torch.cat(
+            (pairwise_labels[positives], pairwise_labels[sampled_negatives]))
         first, second, pairwise_labels = new_first, new_second, new_labels
-
 
     pairwise_labels = pairwise_labels.to(torch.long).to(device)
 
     if config['loss'] == 'hinge':
-        pairwise_labels = torch.where(pairwise_labels == 1, pairwise_labels, torch.tensor(-1, device=device))
+        pairwise_labels = torch.where(
+            pairwise_labels == 1, pairwise_labels, torch.tensor(-1, device=device))
     else:
-        pairwise_labels = torch.where(pairwise_labels == 1, pairwise_labels, torch.tensor(0, device=device))
-    torch.cuda.empty_cache()
-
+        pairwise_labels = torch.where(
+            pairwise_labels == 1, pairwise_labels, torch.tensor(0, device=device))
+    
 
     return first, second, pairwise_labels
 
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default='configs/config_pairwise.json')
+    parser.add_argument('--config', type=str,
+                        default='configs/config_pairwise.json')
     args = parser.parse_args()
-
 
     config = pyhocon.ConfigFactory.parse_file(args.config)
     fix_seed(config)
@@ -201,9 +209,17 @@ if __name__ == '__main__':
     if config.include_text:
         expansions_train = load_json(f"comet/train_exp_sentences.json")
         expansions_val = load_json(f"comet/val_exp_sentences.json")
-        expansion_embeddings_train = load_pkl_dump(f"comet/train_exp_embeddings")
-        expansion_embeddings_val = load_pkl_dump(f"comet/val_exp_embeddings")
-    ## Model initiation
+        expansion_embeddings_train = {
+            "startend": load_pkl_dump(f"comet/train_exp_startend"),
+            "width":  load_pkl_dump(f"comet/train_exp_widths"),
+            "cont":  load_pkl_dump(f"comet/train_exp_cont")
+        }
+        expansion_embeddings_val = {
+            "startend": load_pkl_dump(f"comet/val_exp_startend"),
+            "width":  load_pkl_dump(f"comet/val_exp_widths"),
+            "cont":  load_pkl_dump(f"comet/val_exp_cont")
+        }
+    # Model initiation
     logger.info('Init models')
     bert_model = AutoModel.from_pretrained(config['bert_model']).to(device)
     config['bert_hidden_size'] = bert_model.config.hidden_size
@@ -212,23 +228,23 @@ if __name__ == '__main__':
     span_scorer = SpanScorer(config).to(device)
 
     if config['training_method'] in ('pipeline', 'continue') and not config['use_gold_mentions']:
-        span_repr.load_state_dict(torch.load(config['span_repr_path'], map_location=device))
-        span_scorer.load_state_dict(torch.load(config['span_scorer_path'], map_location=device))
+        span_repr.load_state_dict(torch.load(
+            config['span_repr_path'], map_location=device))
+        span_scorer.load_state_dict(torch.load(
+            config['span_scorer_path'], map_location=device))
 
     span_repr.eval()
     span_scorer.eval()
 
     pairwise_model = SimplePairWiseClassifier(config).to(device)
 
-
-    ## Optimizer and loss function
+    # Optimizer and loss function
     models = [pairwise_model]
     if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions']:
         models.append(span_repr)
         models.append(span_scorer)
     optimizer = get_optimizer(config, models)
     criterion = get_loss_function(config)
-
 
     logger.info('Number of parameters of mention extractor: {}'.format(
         count_parameters(span_repr) + count_parameters(span_scorer)))
@@ -250,21 +266,23 @@ if __name__ == '__main__':
         total_number_of_pairs = 0
         for topic_num in tqdm(list_of_topics):
             topic = training_set.topic_list[topic_num]
-            topic_spans = get_all_candidate_spans(config, bert_model, span_repr, span_scorer, training_set, topic_num, bert_tokenizer, expansions_train, expansion_embeddings_train)
-            first, second, pairwise_labels = get_pairwise_labels(topic_spans.labels, is_training=config['neg_samp'])
+            topic_spans = get_all_candidate_spans(config, bert_model, span_repr, span_scorer,
+                                                  training_set, topic_num, bert_tokenizer, expansions_train, expansion_embeddings_train)
+            first, second, pairwise_labels = get_pairwise_labels(
+                topic_spans.labels, is_training=config['neg_samp'])
             span_embeddings = topic_spans.start_end_embeddings, topic_spans.continuous_embeddings, topic_spans.width
             loss = train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, span_embeddings, first,
-                                            second, pairwise_labels, config['batch_size'], criterion, optimizer,
+                                             second, pairwise_labels, config['batch_size'], criterion, optimizer,
                                              topic_spans.combined_ids, graph_embeddings_train, topic_spans.span_expansion_embeddings
                                              )
-            torch.cuda.empty_cache()
+            
             accumulate_loss += loss
             total_number_of_pairs += len(first)
 
-        logger.info('Number of training pairs: {}'.format(total_number_of_pairs))
+        logger.info('Number of training pairs: {}'.format(
+            total_number_of_pairs))
         logger.info('Accumulate loss: {}'.format(accumulate_loss))
         wandb.log({'train loss': accumulate_loss})
-
 
         logger.info('Evaluate on the dev set')
 
@@ -275,25 +293,24 @@ if __name__ == '__main__':
 
         all_scores, all_labels = [], []
         count = collections.defaultdict(set)
-        
+
         all_spans = []
         all_span_expansions = []
         all_lookups = []
         for topic_num, topic in enumerate(tqdm(dev_set.topic_list)):
-            topic_spans = get_all_candidate_spans(config, bert_model, span_repr, span_scorer, dev_set, topic_num, bert_tokenizer, expansions_val, expansion_embeddings_val)
-            # exps = topic_spans.span_expansions
-            # texts = [topic_spans.span_texts[k] for k in first]
-            all_spans = topic_spans.span_texts
-            all_span_expansions = topic_spans.span_expansions
-            all_lookups = topic_spans.combined_ids
-            
-            
-            # logger.info('Topic: {}'.format(topic_num))
-            # logger.info('Num of labels: {}'.format(len(topic_spans.labels)))
-            first, second, pairwise_labels = get_pairwise_labels(topic_spans.labels, is_training=False)
+            topic_spans = get_all_candidate_spans(
+                config, bert_model, span_repr, span_scorer, dev_set, topic_num, bert_tokenizer, expansions_val, expansion_embeddings_val)
+
+            if config.include_text:
+                all_spans = topic_spans.span_texts
+                all_span_expansions = topic_spans.span_expansions
+                all_lookups = topic_spans.combined_ids
+
+            first, second, pairwise_labels = get_pairwise_labels(
+                topic_spans.labels, is_training=False)
 
             span_embeddings = topic_spans.start_end_embeddings, topic_spans.continuous_embeddings, \
-                              topic_spans.width
+                topic_spans.width
             topic_spans.width = topic_spans.width.to(device)
 
             # Plot the cosine similarity of embeddings for this topic
@@ -303,51 +320,58 @@ if __name__ == '__main__':
                 e1 = [topic_spans.span_expansion_embeddings[k] for k in first]
                 e2 = [topic_spans.span_expansion_embeddings[k] for k in second]
                 gr1, gr2 = final_vectors(c1, c2, config, None, None,
-                                                                graph_embeddings_dev, e1, e2)
+                                         graph_embeddings_dev, e1, e2)
 
                 plot_this_batch(gr1, gr2, pairwise_labels.to(torch.float))
 
-
             with torch.no_grad():
-                for i in range(0, len(first), 10000):
-                    end_max = i + 10000
+                for i in range(0, len(first), 1000):
+                    end_max = i + 1000
                     first_idx, second_idx = first[i:end_max], second[i:end_max]
                     batch_labels = pairwise_labels[i:end_max]
                     g1 = span_repr(topic_spans.start_end_embeddings[first_idx],
-                                   [topic_spans.continuous_embeddings[k] for k in first_idx],
+                                   [topic_spans.continuous_embeddings[k]
+                                       for k in first_idx],
                                    topic_spans.width[first_idx])
                     g2 = span_repr(topic_spans.start_end_embeddings[second_idx],
-                                   [topic_spans.continuous_embeddings[k] for k in second_idx],
+                                   [topic_spans.continuous_embeddings[k]
+                                       for k in second_idx],
                                    topic_spans.width[second_idx])
                     # calculate the keys to look up graph embeddings for this batch
-                    combined_ids1 = [topic_spans.combined_ids[k] for k in first_idx]
-                    combined_ids2 = [topic_spans.combined_ids[k] for k in second_idx]
-                    e1 = [topic_spans.span_expansion_embeddings[k] for k in first_idx]
-                    e2 = [topic_spans.span_expansion_embeddings[k] for k in second_idx]
-                    
+                    combined_ids1 = [topic_spans.combined_ids[k]
+                                     for k in first_idx]
+                    combined_ids2 = [topic_spans.combined_ids[k]
+                                     for k in second_idx]
+
+                    e1, e2 = None, None
+                    if config.include_text:
+                        e1 = [topic_spans.span_expansion_embeddings[k]
+                            for k in first_idx]
+                        e2 = [topic_spans.span_expansion_embeddings[k]
+                            for k in second_idx]
+
                     g1_final, g2_final = final_vectors(combined_ids1, combined_ids2, config, g1, g2,
-                                                             graph_embeddings_dev, e1, e2)
-                    
+                                                       graph_embeddings_dev, e1, e2)
 
                     scores = pairwise_model(g1_final, g2_final)
-                    loss = criterion(scores.squeeze(1), batch_labels.to(torch.float))
+                    loss = criterion(scores.squeeze(
+                        1), batch_labels.to(torch.float))
                     accumul_val_loss += loss.item()
 
                     # analysis
-                    counting = (list(zip(combined_ids1, combined_ids2, batch_labels.cpu().detach().numpy())))
-                    for c1,c2,l in counting:
-                        count[(c1,c2)].add(l)
-                    
+                    counting = (
+                        list(zip(combined_ids1, combined_ids2, batch_labels.cpu().detach().numpy())))
+                    for c1, c2, l in counting:
+                        count[(c1, c2)].add(l)
+
                     # if config['plot_cosine']:
                     #     plot_this_batch(g1_final, g2_final, batch_labels.to(torch.float))
-                  
-                        
 
                     if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions']:
                         g1_score = span_scorer(g1)
                         g2_score = span_scorer(g2)
                         scores += g1_score + g2_score
-  
+
                     all_scores.extend(scores.squeeze(1))
                     all_labels.extend(batch_labels.to(torch.int))
                     torch.cuda.empty_cache()
@@ -355,28 +379,29 @@ if __name__ == '__main__':
         all_labels = torch.stack(all_labels)
         all_scores = torch.stack(all_scores)
 
-        count_df = pd.DataFrame({'pairs' : count.keys() , 'label_set' : count.values() })
+        count_df = pd.DataFrame(
+            {'pairs': count.keys(), 'label_set': count.values()})
         count_df['Length'] = count_df['label_set'].str.len()
-        print("In validation set, # of labels per pair", count_df['Length'].value_counts())
+        print("In validation set, # of labels per pair",
+              count_df['Length'].value_counts())
 
-        df_span = pd.DataFrame()
-        df_span['combined_id'] = all_lookups
-        df_span['spans'] = all_spans
-        df_span['exps'] = all_span_expansions
-        # df_span.drop_duplicates(subset='spans', keep="last")
-        
-        sents = '/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_dev.csv'
-        if os.path.exists(sents):
-            df_sents = pd.read_csv(sents)
-            df_span = df_span.merge(df_sents,on='combined_id')
-        df_span.to_csv('span_examples.csv')
+        if config.include_text:
+            df_span = pd.DataFrame()
+            df_span['combined_id'] = all_lookups
+            df_span['spans'] = all_spans
+            df_span['exps'] = all_span_expansions
+            # df_span.drop_duplicates(subset='spans', keep="last")
 
-
-
+            sents = '/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_dev.csv'
+            if os.path.exists(sents):
+                df_sents = pd.read_csv(sents)
+                df_span = df_span.merge(df_sents, on='combined_id')
+            df_span.to_csv('span_examples.csv')
 
         strict_preds = (all_scores > 0).to(torch.int)
         eval = Evaluation(strict_preds, all_labels.to(device))
-        logger.info('Number of predictions: {}/{}'.format(strict_preds.sum(), len(strict_preds)))
+        logger.info(
+            'Number of predictions: {}/{}'.format(strict_preds.sum(), len(strict_preds)))
         logger.info('Number of positive pairs: {}/{}'.format(len(torch.nonzero(all_labels == 1)),
                                                              len(all_labels)))
         logger.info('Strict - Recall: {}, Precision: {}, F1: {}'.format(eval.get_recall(),
@@ -385,6 +410,9 @@ if __name__ == '__main__':
         wandb.log({"val loss": accumul_val_loss})
         wandb.log({"f1": eval.get_f1()})
 
-        torch.save(span_repr.state_dict(), os.path.join(config['model_path'], 'span_repr_{}'.format(epoch)))
-        torch.save(span_scorer.state_dict(), os.path.join(config['model_path'], 'span_scorer_{}'.format(epoch)))
-        torch.save(pairwise_model.state_dict(), os.path.join(config['model_path'], 'pairwise_scorer_{}'.format(epoch)))
+        torch.save(span_repr.state_dict(), os.path.join(
+            config['model_path'], 'span_repr_{}'.format(epoch)))
+        torch.save(span_scorer.state_dict(), os.path.join(
+            config['model_path'], 'span_scorer_{}'.format(epoch)))
+        torch.save(pairwise_model.state_dict(), os.path.join(
+            config['model_path'], 'pairwise_scorer_{}'.format(epoch)))

@@ -18,6 +18,7 @@ from tqdm import tqdm
 import plotly.express as px
 import plotly.figure_factory as ff
 
+
 def create_corpus(config, tokenizer, split_name, is_training=True):
     docs_path = os.path.join(config.data_folder, split_name + '.json')
     mentions_path = os.path.join(config.data_folder,
@@ -49,7 +50,8 @@ def create_logger(config, create_file=True):
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[
             # logging.FileHandler(os.path.join(config.log_path, "test.log")),
-            logging.FileHandler(os.path.join(config.log_path,'{}.log'.format(datetime.now().strftime("%Y_%m_%d_%H_%M_%S")))),
+            logging.FileHandler(os.path.join(config.log_path, '{}.log'.format(
+                datetime.now().strftime("%Y_%m_%d_%H_%M_%S")))),
             logging.StreamHandler()
         ]
     )
@@ -153,9 +155,6 @@ def send_email(user, pwd, recipient, subject, body):
         print("failed to send mail")
 
 
-
-
-
 def align_ecb_bert_tokens(ecb_tokens, bert_tokens):
     bert_to_ecb_ids = []
     relative_char_pointer = 0
@@ -222,9 +221,8 @@ def batch_saved_embeddings(batch_ids, config, embedding):
             # sentence embeddings are stored as a dataframe, so use .loc
             out = embedding.loc[ind][0]
         batch_embeddings.append([out])
-        #print(out.shape)
+        # print(out.shape)
     return np.array(batch_embeddings).reshape(len(batch_embeddings), -1)
-
 
 
 def plot_this_batch(g1, g2, batch_labels):
@@ -237,10 +235,12 @@ def plot_this_batch(g1, g2, batch_labels):
     batch_labels = batch_labels.cpu().detach().numpy()
     pos_indices = np.where(batch_labels == 1)[0]
     neg_indices = np.where(batch_labels == 0)[0]
-    print(len(pos_indices),len(neg_indices))
-    if len(pos_indices) > 1 and len(neg_indices)>1:
-        fig = ff.create_distplot([output[pos_indices], output[neg_indices]], ['corefering pairs', 'non-corefering pairs'])
-        fig.update_layout(title_text='Cosine similarity of sentence embeddings(COMET)')
+    print(len(pos_indices), len(neg_indices))
+    if len(pos_indices) > 1 and len(neg_indices) > 1:
+        fig = ff.create_distplot([output[pos_indices], output[neg_indices]], [
+                                 'corefering pairs', 'non-corefering pairs'])
+        fig.update_layout(
+            title_text='Cosine similarity of sentence embeddings(COMET)')
         fig.show()
 
 
@@ -268,20 +268,17 @@ def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embed
     @param embeddings: dict with all knowledge embeddings, we will look up the ids in this dict
     @return:
     """
-    # print("spans", span1.size(), span2.size())
     if not config.include_graph and not config.include_text:
         # if graph is not included, just use spans
         return span1, span2
 
     elif config.include_text:
+        e1, e2 = torch.vstack(e1).float().cuda(), torch.vstack(e2).float().cuda()
         if config.exclude_span_repr:
-            # if this is set to true, we exclude spans entirely and only use expansion embeddings
-            # print(len(e1))
-            g1_new, g2_new = torch.vstack(e1).float().cuda(), torch.vstack(e2).float().cuda()
+            g1_new, g2_new = e1, e2
         else:
             # Concatenate span + expansions
-
-            g1_new = torch.cat((span1, e1), axis=1)
+            g1_new = torch.cat((span1, e1 ), axis=1)
             g2_new = torch.cat((span2, e2), axis=1)
 
     else:
@@ -299,43 +296,45 @@ def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embed
 
             g1_new = torch.cat((span1, graph1), axis=1)
             g2_new = torch.cat((span2, graph2), axis=1)
-    #print(g1_new.shape)
+    # print(g1_new.shape)
     return g1_new, g2_new
 
 
-def get_span_specific_embeddings(span_start_end_embeddings, combined_ids, bert_model, bert_tokenizer, all_expansions, all_expansion_embeddings):
+def get_span_specific_embeddings(span_start_end_embeddings, combined_ids, span_repr, all_expansions, all_expansion_embeddings, span_embeddings,
+config):
 
-    #print("Span specific embeddings calculation")
+    # print("Span specific embeddings calculation", span_embeddings.size(), len(combined_ids))
     cos = nn.CosineSimilarity(dim=1, eps=1e-8)
 
     fine_grained_expansions = []
     fine_grained_embeddings = []
-    
 
     for i in (range(len(combined_ids))):
         # Look up inferences of a particular sentence
         key = combined_ids[i]
         expansions = np.array(all_expansions[key])
-        candidate_tensors = torch.tensor(all_expansion_embeddings[key]).cuda()
-        # find the top 5 expacnsion embeddings that are similar to the span
-        span = span_start_end_embeddings[i].reshape(1, -1)
-        #print(span)
+        if config.attention_based:
+            se = torch.tensor(all_expansion_embeddings['startend'][key]).cuda()
+            cont = torch.tensor(all_expansion_embeddings['cont'][key]).cuda()
+            width = torch.tensor(all_expansion_embeddings['width'][key]).cuda()
+            with torch.no_grad():
+                candidate_tensors = span_repr(se, cont, width)
+            span = span_embeddings[i].view(1,-1)
+        else:
+            candidate_tensors = torch.tensor(all_expansion_embeddings['startend'][key]).cuda()
+            # find the top 5 expacnsion embeddings that are similar to the span
+            span = span_start_end_embeddings[i].view(1, -1)
+        # print(span.size(), candidate_tensors.size())
+        
+        # print(span)
 
         distances = cos(candidate_tensors, span)
-        values,indices = distances.topk(5)
+        # print("min max:", torch.min(distances), torch.max(distances))
+        values, indices = distances.topk(5)
         # print(values, indices)
-        final_selection = candidate_tensors[indices].reshape(1,-1).squeeze()
+        final_selection = candidate_tensors[indices].reshape(1, -1).squeeze()
         final_expansions = expansions[indices.cpu().detach().numpy()]
         fine_grained_embeddings.append(final_selection)
         fine_grained_expansions.append(final_expansions)
 
     return fine_grained_embeddings, fine_grained_expansions
-
-
-
-        
-
-            
-
-            
-

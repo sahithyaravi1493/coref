@@ -11,7 +11,7 @@ config = pyhocon.ConfigFactory.parse_file('configs/config_pairwise.json')
 
 
 if __name__ == '__main__':
-    print(config)
+    # print(config)
     if torch.cuda.is_available():
         print("### USING GPU:0")
         device = torch.device('cuda:0')  
@@ -27,8 +27,10 @@ if __name__ == '__main__':
     print(embeddings.size())
 
     for split in ['train', 'val']:
-        output = {}
-        all_expansions = load_json(f"text_incorporation/{split}_exp_sentences.json")
+        start_end_embeddings = {}
+        continuous_embeddings = {}
+        widths = {}
+        all_expansions = load_json(f"comet/{split}_exp_sentences.json")
         for key, expansions in tqdm(all_expansions.items()):
             # Tokenize all inferences
             token_ids = []
@@ -39,9 +41,15 @@ if __name__ == '__main__':
             starts = embeddings[:, 0, :]
             ends = embeddings[:, -1, :]
             start_ends = torch.hstack((starts, ends))
-            output[key] = start_ends.cpu().detach().numpy()
+            start_end_embeddings[key] = start_ends.cpu().detach().numpy()
+            continuous_embeddings[key] = embeddings.cpu().detach().numpy()
+            widths[key] = lengths
+            #print(start_end_embeddings[key].shape, continuous_embeddings[key].shape, widths[key].shape)
+            
 
-        save_pkl_dump(f"text_incorporation/{split}_exp_embeddings.json", output)
+        save_pkl_dump(f"comet/{split}_exp_startend", start_end_embeddings)
+        save_pkl_dump(f"comet/{split}_exp_cont", continuous_embeddings)
+        save_pkl_dump(f"comet/{split}_exp_widths", widths)
 
         
 

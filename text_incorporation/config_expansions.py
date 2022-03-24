@@ -34,7 +34,7 @@ expansions = {
         'val': load_json('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/expansions_val.json'),
         # 'test': '/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_test.csv'
     }
-relation_map = load_json("/ubc/cs/research/nlp/sahiravi/coref/text_incorporation/relation_map.json")
+relation_map = load_json("/ubc/cs/research/nlp/sahiravi/coref/comet/relation_map.json")
 
 
 atomic_relations = ["oEffect",

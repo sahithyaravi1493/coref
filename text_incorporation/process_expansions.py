@@ -93,8 +93,8 @@ def lexical_overlap(vocab, s1):
 
     for s2 in vocab:
         w2 = s2.split()
-        overlap = len(set(w1) & set(w2))/len(w1)
-        if overlap > 0.6:
+        overlap = len(set(w1) & set(w2))/(len(w1)+ 1e-8)
+        if overlap > 0.7:
             return True
     return False
 
@@ -123,9 +123,9 @@ def convert_job(sentences, key, exp, relation):
     for beam in exp:
         source = personx
         target = beam.lstrip().translate(str.maketrans('', '', string.punctuation))
-        # if relation in atomic_relations and not is_person(source):
-        #     source = "person"
-        if target and target != "none":  #and target not in seen and not lexical_overlap(seen, target)
+        if relation in atomic_relations and not is_person(source):
+            source = "person"
+        if target and target != "none" and target not in seen and not lexical_overlap(seen, target):
             sent = relation_map[relation.lower()].replace("{0}", source).replace("{1}", target)+"."
             context.append(sent.capitalize())
             seen.add(target)
@@ -161,6 +161,7 @@ if __name__ == '__main__':
         all_sentences = {}
 
         for relation_name in relations_used:
+            print(f"processing relation {relation_name}")
             expansion_dict = expansions[split][relation_name]
             contexts, top_contexts = expansions_to_sentences(expansion_dict, original_sentences, relation_name, parallel=False)
             all_sentences[relation_name] = contexts
@@ -171,7 +172,7 @@ if __name__ == '__main__':
             for key, value in d.items():
                 dd[key].extend(value)
         
-        save_json(f"text_incorporation/{split}_exp_sentences.json", dd)
+        save_json(f"comet/{split}_exp_sentences.json", dd)
         
 
 

@@ -21,8 +21,8 @@
   "random_seed": 50,
   "epochs": 1,
   "batch_size": 128,
-  "learning_rate": 1e-4,
-  "weight_decay": 1e-1,
+  "learning_rate": 1e-5,
+  "weight_decay": 1e-2,
   "loss": "bce",
   "optimizer": "adamw",
   "adam_epsilon": 1e-8,
@@ -40,7 +40,8 @@
   
   "include_text": true,
   "topk":5,
-  "expansion_dimension":2048,
+  "expansion_dimension":3092,
+  "attention_based": true,
 
   "log_path": "logs/pairwise_scorer_n/",
   "data_folder": "data/ecb/mentions",

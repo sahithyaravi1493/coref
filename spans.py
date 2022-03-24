@@ -34,6 +34,8 @@ class TopicSpans:
         # embeddings
         self.start_end_embeddings = []
         self.continuous_embeddings = []
+        self.span_expansion_embeddings = []
+        self.span_expansions = []
 
         self.get_all_spans_from_topic(data, topic_num, docs_embeddings, docs_lengths)
         self.create_tensor()
