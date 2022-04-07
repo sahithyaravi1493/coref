@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 import plotly.express as px
 import plotly.figure_factory as ff
-
+import hickle as hkl
 
 def create_corpus(config, tokenizer, split_name, is_training=True):
     docs_path = os.path.join(config.data_folder, split_name + '.json')
@@ -182,12 +182,17 @@ def align_ecb_bert_tokens(ecb_tokens, bert_tokens):
 
 def save_pkl_dump(filename, dictionary):
     with open(f'{filename}.pickle', 'wb') as handle:
-        pickle.dump(dictionary, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        pickle.dump(dictionary, handle, protocol=2)
 
 
-def load_pkl_dump(filename):
+def load_pkl_dump(filename, ext='pkl'):
+    if ext == 'hkl':
+        a = hkl.load(f'{filename}.hkl')
+        return a
+
     with open(f'{filename}.pickle', 'rb') as handle:
         a = pickle.load(handle)
+    
     return a
 
 
@@ -238,9 +243,9 @@ def plot_this_batch(g1, g2, batch_labels):
     print(len(pos_indices), len(neg_indices))
     if len(pos_indices) > 1 and len(neg_indices) > 1:
         fig = ff.create_distplot([output[pos_indices], output[neg_indices]], [
-                                 'corefering pairs', 'non-corefering pairs'])
+                                 'corefering pairs', 'non-corefering pairs'], bin_size=0.01)
         fig.update_layout(
-            title_text='Cosine similarity of sentence embeddings(COMET)')
+            title_text='Cosine similarity of span start-end embeddings')
         fig.show()
 
 
@@ -329,7 +334,8 @@ config):
         # print(span)
 
         distances = cos(candidate_tensors, span)
-        # print("min max:", torch.min(distances), torch.max(distances))
+        # if i == 0 or i == 10:
+        #     print("min max:", torch.min(distances), torch.max(distances))
         values, indices = distances.topk(5)
         # print(values, indices)
         final_selection = candidate_tensors[indices].reshape(1, -1).squeeze()

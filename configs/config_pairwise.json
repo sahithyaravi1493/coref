@@ -20,8 +20,8 @@
 
   "random_seed": 50,
   "epochs": 1,
-  "batch_size": 128,
-  "learning_rate": 1e-5,
+  "batch_size": 64,
+  "learning_rate": 1e-4,
   "weight_decay": 1e-2,
   "loss": "bce",
   "optimizer": "adamw",
@@ -33,19 +33,19 @@
   "include_graph": false,
   "knowledge_embedding_dimension": 200,
   "relations_per_sentence": 50,
-  "exclude_span_repr": true,
+  "exclude_span_repr": false,
   "embedding_type": "rgcn",
   "stored_embeddings_path": "comet/rgcn_hidden",
   "plot_cosine": true,
   
-  "include_text": true,
+  "include_text": false,
   "topk":5,
-  "expansion_dimension":3092,
-  "attention_based": true,
+  "expansion_dimension":2048,
+  "attention_based": false,
 
   "log_path": "logs/pairwise_scorer_n/",
   "data_folder": "data/ecb/mentions",
   "span_repr_path": "models/span_scorers/events_span_repr_0",
   "span_scorer_path": "models/span_scorers/events_span_scorer_0",
-  "model_path": "models/pairwise_scorers_n"
+  "model_path": "models/pairwise_scorers_s"
 }

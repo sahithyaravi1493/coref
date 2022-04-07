@@ -94,8 +94,10 @@ class SimplePairWiseClassifier(nn.Module):
     def __init__(self, config):
         super(SimplePairWiseClassifier, self).__init__()
         self.input_layer = config.bert_hidden_size * 3 if config.with_head_attention else config.bert_hidden_size * 2
+
         if config.with_mention_width:
             self.input_layer += config.embedding_dimension
+
         if config.include_graph:
             # set knowledge_embedding_dimension=1024,relations_per_sentence=0 when using COMET sentence embeddings
             if config.exclude_span_repr:
@@ -104,19 +106,19 @@ class SimplePairWiseClassifier(nn.Module):
             self.input_layer += config.knowledge_embedding_dimension * (config.relations_per_sentence + 1)
 
         if config.include_text:
-            # set knowledge_embedding_dimension=1024,relations_per_sentence=0 when using COMET sentence embeddings
             if config.exclude_span_repr:
                 # exclude span representation, use only the knowledge embedding
                 self.input_layer = 0
+            # configure the # of expansions picked using topk and embedding dimension = 2048(start-end)/3092(attention)
             self.input_layer += config.expansion_dimension * (config.topk)
 
         self.input_layer *= 3
         self.hidden_layer = config.hidden_layer
         self.pairwise_mlp = nn.Sequential(
             nn.Dropout(config.dropout),
-            nn.Linear(self.input_layer, self.hidden_layer*2),
+            nn.Linear(self.input_layer, self.hidden_layer),
             nn.ReLU(),
-            nn.Linear(self.hidden_layer*2, self.hidden_layer),
+            nn.Linear(self.hidden_layer, self.hidden_layer),
             nn.Dropout(config.dropout),
             nn.ReLU(),
             nn.Linear(self.hidden_layer, 1),

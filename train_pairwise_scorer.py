@@ -18,9 +18,9 @@ import os
 import collections
 import pandas as pd
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
-# gc.collect()
-# torch.cuda.empty_cache()
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+gc.collect()
+torch.cuda.empty_cache()
 
 
 os.environ["WANDB_SILENT"] = "true"
@@ -83,11 +83,10 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
 
         scores = pairwise_model(g1_final, g2_final)
 
-        if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions']:
+        if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions'] and not config['exclude_span_repr']:
             g1_score = span_scorer(g1)
             g2_score = span_scorer(g2)
-            if not config['exclude_span_repr']:
-                scores += g1_score + g2_score
+            scores += g1_score + g2_score
 
         loss = criterion(scores.squeeze(1), batch_labels)
         accumulate_loss += loss.item()
@@ -207,18 +206,22 @@ if __name__ == '__main__':
         graph_embeddings_dev = load_stored_embeddings(config, split='val')
 
     if config.include_text:
-        expansions_train = load_json(f"comet/train_exp_sentences.json")
-        expansions_val = load_json(f"comet/val_exp_sentences.json")
+        # load expansions
+        expansions_train = load_json(f"comet/train_exp_sentences_ns.json")
+        expansions_val = load_json(f"comet/val_exp_sentences_ns.json")
+
+        # load embeddings of expansions
         expansion_embeddings_train = {
-            "startend": load_pkl_dump(f"comet/train_exp_startend"),
-            "width":  load_pkl_dump(f"comet/train_exp_widths"),
-            "cont":  load_pkl_dump(f"comet/train_exp_cont")
+            "startend": load_pkl_dump(f"comet/train_e_startend_ns", ext='hkl'),
+            # "width":  load_pkl_dump(f"comet/train_e_widths", ext='hkl'),
+            # "cont":  load_pkl_dump(f"comet/train_e_cont", ext='hkl')
         }
         expansion_embeddings_val = {
-            "startend": load_pkl_dump(f"comet/val_exp_startend"),
-            "width":  load_pkl_dump(f"comet/val_exp_widths"),
-            "cont":  load_pkl_dump(f"comet/val_exp_cont")
+            "startend": load_pkl_dump(f"comet/val_e_startend_ns", ext='hkl'),
+            # "width":  load_pkl_dump(f"comet/val_e_widths", ext='hkl'),
+            # "cont":  load_pkl_dump(f"comet/val_e_cont", ext='hkl')
         }
+    
     # Model initiation
     logger.info('Init models')
     bert_model = AutoModel.from_pretrained(config['bert_model']).to(device)
@@ -265,6 +268,7 @@ if __name__ == '__main__':
         list_of_topics = shuffle(list(range(len(training_set.topic_list))))
         total_number_of_pairs = 0
         for topic_num in tqdm(list_of_topics):
+            # print("topic", topic_num)
             topic = training_set.topic_list[topic_num]
             topic_spans = get_all_candidate_spans(config, bert_model, span_repr, span_scorer,
                                                   training_set, topic_num, bert_tokenizer, expansions_train, expansion_embeddings_train)
@@ -278,6 +282,7 @@ if __name__ == '__main__':
             
             accumulate_loss += loss
             total_number_of_pairs += len(first)
+            torch.cuda.empty_cache()
 
         logger.info('Number of training pairs: {}'.format(
             total_number_of_pairs))
@@ -302,9 +307,10 @@ if __name__ == '__main__':
                 config, bert_model, span_repr, span_scorer, dev_set, topic_num, bert_tokenizer, expansions_val, expansion_embeddings_val)
 
             if config.include_text:
-                all_spans = topic_spans.span_texts
-                all_span_expansions = topic_spans.span_expansions
-                all_lookups = topic_spans.combined_ids
+                # for saving this information topic wise
+                all_spans.extend(topic_spans.span_texts)
+                all_span_expansions.extend(topic_spans.span_expansions)
+                all_lookups.extend(topic_spans.combined_ids)
 
             first, second, pairwise_labels = get_pairwise_labels(
                 topic_spans.labels, is_training=False)
@@ -313,14 +319,17 @@ if __name__ == '__main__':
                 topic_spans.width
             topic_spans.width = topic_spans.width.to(device)
 
-            # Plot the cosine similarity of embeddings for this topic
+            # Plot the cosine similarity of embeddings for this topic based on labels
             if config['plot_cosine']:
                 c1 = [topic_spans.combined_ids[k] for k in first]
                 c2 = [topic_spans.combined_ids[k] for k in second]
-                e1 = [topic_spans.span_expansion_embeddings[k] for k in first]
-                e2 = [topic_spans.span_expansion_embeddings[k] for k in second]
-                gr1, gr2 = final_vectors(c1, c2, config, None, None,
-                                         graph_embeddings_dev, e1, e2)
+                e1, e2 = None, None
+                if config.include_text:
+                    e1 = [topic_spans.span_expansion_embeddings[k] for k in first]
+                    e2 = [topic_spans.span_expansion_embeddings[k] for k in second]
+                gr1, gr2 = final_vectors(c1, c2, config, topic_spans.start_end_embeddings[first], 
+                topic_spans.start_end_embeddings[second],
+                graph_embeddings_dev, e1, e2)
 
                 plot_this_batch(gr1, gr2, pairwise_labels.to(torch.float))
 
@@ -396,7 +405,7 @@ if __name__ == '__main__':
             if os.path.exists(sents):
                 df_sents = pd.read_csv(sents)
                 df_span = df_span.merge(df_sents, on='combined_id')
-            df_span.to_csv('span_examples.csv')
+            df_span.to_csv('span_examples_ns.csv')
 
         strict_preds = (all_scores > 0).to(torch.int)
         eval = Evaluation(strict_preds, all_labels.to(device))

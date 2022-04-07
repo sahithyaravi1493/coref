@@ -41,7 +41,6 @@ class TopicSpans:
         self.create_tensor()
 
 
-
     def set_span_labels(self):
         self.labels = self.data.get_candidate_labels(self.doc_ids, self.origin_start, self.origin_end)
 
@@ -118,6 +117,8 @@ class TopicSpans:
             self.num_tokens += len(original_tokens)
             sentence_span, original_candidates, bert_candidates = self.get_docs_candidate(original_tokens, bert_start_end)
             original_candidate_starts, original_candidate_ends = original_candidates
+
+            # Get actual span texts corresponding to the embeddings
             sid_list = sentence_span.tolist()
             start_list = original_candidate_starts.tolist()
             end_list = original_candidate_ends.tolist()
@@ -131,11 +132,8 @@ class TopicSpans:
                     if (sid, idx) in lookup:
                         text += lookup[(sid, idx)] + " "
                 spans.append(text)
-
             self.span_texts.extend(spans)
             #token_text = np.asarray([x[2] for x in original_tokens])
-
-
 
             # update origin idx
             self.doc_ids.extend([doc_id] * len(sentence_span))

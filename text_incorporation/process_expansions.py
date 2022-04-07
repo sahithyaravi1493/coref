@@ -112,11 +112,12 @@ def convert_job(sentences, key, exp, relation):
     top_context = []
     seen = set()
     srl = False
+    personx = "person"
 
-    if srl:
-        personx = get_personx_srl(sentences[key])
-    else:
-        personx = get_personx(sentences[key].replace("_", ""))  # the sentence expanded by comet
+    # if srl:
+    #     personx = get_personx_srl(sentences[key])
+    # else:
+    #     personx = get_personx(sentences[key].replace("_", ""))  # the sentence expanded by comet
     
     if relation not in excluded_relations:
         top_context.append(relation_map[relation.lower()].replace("{0}", personx).replace("{1}", exp[0])+".")
@@ -155,7 +156,7 @@ def expansions_to_sentences(expansions, sentences, relation, parallel=False):
 
 
 if __name__ == '__main__':
-    for split in ['train', 'val']:
+    for split in ['train']:
         relations_used = expansions[split].keys()
         original_sentences = dict(zip(list(sentences[split]["combined_id"].values), list(sentences[split]["sentence"].values)))
         all_sentences = {}
@@ -172,7 +173,7 @@ if __name__ == '__main__':
             for key, value in d.items():
                 dd[key].extend(value)
         
-        save_json(f"comet/{split}_exp_sentences.json", dd)
+        save_json(f"comet/{split}_exp_sentences_ns.json", dd)
         
 
 

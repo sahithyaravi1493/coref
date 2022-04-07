@@ -1,8 +1,6 @@
 import numpy as np
 import torch
 from itertools import compress
-import torch.nn as nn
-
 
 def pad_and_read_bert(bert_token_ids, bert_model):
     length = np.array([len(d) for d in bert_token_ids])
