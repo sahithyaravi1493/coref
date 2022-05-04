@@ -230,24 +230,31 @@ def batch_saved_embeddings(batch_ids, config, embedding):
     return np.array(batch_embeddings).reshape(len(batch_embeddings), -1)
 
 
-def plot_this_batch(g1, g2, batch_labels):
+def plot_this_batch(g1, g2, span1, span2, c1, c2, batch_labels):
+
+    # Plot cosine similarity of embeddings g1 and g2
     cos = nn.CosineSimilarity(dim=1, eps=1e-8)
-    output = cos(g1, g2)
-    g1 = g1.cpu().detach().numpy()
-    g2 = g2.cpu().detach().numpy()
-    output = output.cpu().detach().numpy()
-    print(output.shape)
+    cosine_similarities = cos(g1, g2).cpu().detach().numpy()
     batch_labels = batch_labels.cpu().detach().numpy()
     pos_indices = np.where(batch_labels == 1)[0]
     neg_indices = np.where(batch_labels == 0)[0]
-    print(len(pos_indices), len(neg_indices))
+    # print(len(pos_indices), len(neg_indices))
     if len(pos_indices) > 1 and len(neg_indices) > 1:
-        fig = ff.create_distplot([output[pos_indices], output[neg_indices]], [
+        fig = ff.create_distplot([cosine_similarities[pos_indices], cosine_similarities[neg_indices]], [
                                  'corefering pairs', 'non-corefering pairs'], bin_size=0.01)
         fig.update_layout(
             title_text='Cosine similarity of span start-end embeddings')
         fig.show()
 
+    # Find how many corefering pairs have cosine sim less than 0.9
+    less = (cosine_similarities[pos_indices] < 0.9).sum()
+    count = len(cosine_similarities[pos_indices])
+    # print("Corefering pairs with similarity less than 0.9", less/count)
+
+    # Find how many non-corefering pairs have cosine sim greater than 0.9
+    great = (cosine_similarities[neg_indices] > 0.9).sum()
+    count = len(cosine_similarities[neg_indices])
+    print(f"Non-corefering pairs with cosine sim greater than 0.9 {count} {great/count}")
 
 def load_json(filepath):
     with open(filepath, 'r') as fp:

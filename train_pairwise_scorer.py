@@ -299,18 +299,21 @@ if __name__ == '__main__':
         all_scores, all_labels = [], []
         count = collections.defaultdict(set)
 
-        all_spans = []
-        all_span_expansions = []
+        # Additional lists for debugging
+        all_spans, all_span_expansions = [], []
         all_lookups = []
+        all_pairs1, all_pairs2 = [], []
+        all_s1, all_s2 = [], []
+
         for topic_num, topic in enumerate(tqdm(dev_set.topic_list)):
             topic_spans = get_all_candidate_spans(
                 config, bert_model, span_repr, span_scorer, dev_set, topic_num, bert_tokenizer, expansions_val, expansion_embeddings_val)
 
             if config.include_text:
-                # for saving this information topic wise
-                all_spans.extend(topic_spans.span_texts)
                 all_span_expansions.extend(topic_spans.span_expansions)
-                all_lookups.extend(topic_spans.combined_ids)
+
+            all_spans.extend(topic_spans.span_texts)  
+            all_lookups.extend(topic_spans.combined_ids)
 
             first, second, pairwise_labels = get_pairwise_labels(
                 topic_spans.labels, is_training=False)
@@ -319,20 +322,32 @@ if __name__ == '__main__':
                 topic_spans.width
             topic_spans.width = topic_spans.width.to(device)
 
+            #############
+            # Save topic-wise information for debugging
+            c1 = [topic_spans.combined_ids[k] for k in first]
+            c2 = [topic_spans.combined_ids[k] for k in second]
+            span1 = [topic_spans.span_texts[k] for k in first]
+            span2 = [topic_spans.span_texts[k] for k in second]
+            e1, e2 = None, None
+
+            all_s1.extend(span1)
+            all_s2.extend(span2)
+            all_pairs1.extend(c1)
+            all_pairs2.extend(c2)
+
+            if config.include_text:
+                e1 = [topic_spans.span_expansion_embeddings[k] for k in first]
+                e2 = [topic_spans.span_expansion_embeddings[k] for k in second]
+            #############
+            
             # Plot the cosine similarity of embeddings for this topic based on labels
             if config['plot_cosine']:
-                c1 = [topic_spans.combined_ids[k] for k in first]
-                c2 = [topic_spans.combined_ids[k] for k in second]
-                e1, e2 = None, None
-                if config.include_text:
-                    e1 = [topic_spans.span_expansion_embeddings[k] for k in first]
-                    e2 = [topic_spans.span_expansion_embeddings[k] for k in second]
+                # Plot    
                 gr1, gr2 = final_vectors(c1, c2, config, topic_spans.start_end_embeddings[first], 
                 topic_spans.start_end_embeddings[second],
                 graph_embeddings_dev, e1, e2)
-
-                plot_this_batch(gr1, gr2, pairwise_labels.to(torch.float))
-
+                plot_this_batch(gr1, gr2, span1, span2, c1, c2, pairwise_labels.to(torch.float))    
+            
             with torch.no_grad():
                 for i in range(0, len(first), 1000):
                     end_max = i + 1000
@@ -367,14 +382,11 @@ if __name__ == '__main__':
                         1), batch_labels.to(torch.float))
                     accumul_val_loss += loss.item()
 
-                    # analysis
+                    # How many labels each sentence has?
                     counting = (
                         list(zip(combined_ids1, combined_ids2, batch_labels.cpu().detach().numpy())))
                     for c1, c2, l in counting:
                         count[(c1, c2)].add(l)
-
-                    # if config['plot_cosine']:
-                    #     plot_this_batch(g1_final, g2_final, batch_labels.to(torch.float))
 
                     if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions']:
                         g1_score = span_scorer(g1)
@@ -391,6 +403,7 @@ if __name__ == '__main__':
         count_df = pd.DataFrame(
             {'pairs': count.keys(), 'label_set': count.values()})
         count_df['Length'] = count_df['label_set'].str.len()
+
         print("In validation set, # of labels per pair",
               count_df['Length'].value_counts())
 
@@ -409,6 +422,35 @@ if __name__ == '__main__':
 
         strict_preds = (all_scores > 0).to(torch.int)
         eval = Evaluation(strict_preds, all_labels.to(device))
+
+        # Document wrong predictions
+        compare = (strict_preds == all_labels.to(device))
+        indices = (torch.where(compare == 0))
+        print(len(all_labels), len(indices[0]))
+        wrong_predictions = pd.DataFrame()
+        wrong_predictions["c1"] = [all_pairs1[k] for k in indices[0]]
+        wrong_predictions["c2"] = [all_pairs2[k] for k in indices[0]]
+        wrong_predictions["span1"] = [all_s1[k] for k in indices[0]]
+        wrong_predictions["span2"] = [all_s2[k] for k in indices[0]]
+        sents = '/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_dev.csv'
+        if os.path.exists(sents):
+            df_sents = pd.read_csv(sents)
+            sent1 = []
+            sent2 = []
+            for idx, row in wrong_predictions.iterrows():
+                sent = df_sents[df_sents["combined_id"] == c1]
+                sent1.append(sent["sentence"].values[0])
+                sent = df_sents[df_sents["combined_id"] == c2]
+                sent2.append(sent["sentence"].values[0])
+
+            wrong_predictions["sent1"] = sent1
+            wrong_predictions["sent2"] = sent2
+            wrong_predictions["actual_labels"] =  [all_labels[k] for k in indices[0]]
+
+        wrong_predictions.to_csv("errors.csv")
+
+        #########
+    
         logger.info(
             'Number of predictions: {}/{}'.format(strict_preds.sum(), len(strict_preds)))
         logger.info('Number of positive pairs: {}/{}'.format(len(torch.nonzero(all_labels == 1)),
