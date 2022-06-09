@@ -75,16 +75,18 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
         e1 = None
         e2 = None
 
-        if config.include_text and config.attention_based:
-            # If knowledge embeddings need to be represented similar to spans i.e with attention
-            e1, e2 = get_expansion_with_attention(span_repr, text_knowledge_embeddings, batch_first, batch_second, device)
-        else:
-            e1 = torch.stack([knowledge_start_end_embeddings[k] for k in batch_first]).to(device)
-            e2 = torch.stack([knowledge_start_end_embeddings[k] for k in batch_second]).to(device)
+        if config.include_text:
+            if config.attention_based:
+                # If knowledge embeddings need to be represented similar to spans i.e with attention
+                e1, e2 = get_expansion_with_attention(span_repr, text_knowledge_embeddings, batch_first, batch_second, device)
+            else:
+                e1 = torch.stack([knowledge_start_end_embeddings[k] for k in batch_first]).to(device)
+                e2 = torch.stack([knowledge_start_end_embeddings[k] for k in batch_second]).to(device)
 
-        g1_final, g2_final = final_vectors(combined1, combined2, config, g1, g2, graph_embeddings, e1, e2, fusion="linear")
+        g1_final, g2_final = final_vectors(combined1, combined2, config, g1, g2, graph_embeddings, e1, e2)
         
         scores = pairwise_model(g1_final, g2_final)
+        print(scores.squeeze(1))
 
         if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions'] and not config['exclude_span_repr']:
             g1_score = span_scorer(g1)
@@ -356,15 +358,17 @@ if __name__ == '__main__':
             c2 = [topic_spans.combined_ids[k] for k in second]
             span1 = [topic_spans.span_texts[k] for k in first]
             span2 = [topic_spans.span_texts[k] for k in second]
-            k1 = [topic_spans.knowledge_text[k] for k in first]
-            k2 = [topic_spans.knowledge_text[k] for k in second]
+            if config.include_text:
+                k1 = [topic_spans.knowledge_text[k] for k in first]
+                k2 = [topic_spans.knowledge_text[k] for k in second]
+                all_k1.extend(k1)
+                all_k2.extend(k2)
 
             all_s1.extend(span1)
             all_s2.extend(span2)
             all_pairs1.extend(c1)
             all_pairs2.extend(c2)
-            all_k1.extend(k1)
-            all_k2.extend(k2)
+
             
             # Plot the cosine similarity of embeddings for this topic based on labels
             if config['plot_cosine']:
@@ -396,21 +400,27 @@ if __name__ == '__main__':
                                      for k in second_idx]
                     
                     knowledge_embeddings = topic_spans.knowledge_start_end_embeddings, topic_spans.knowledge_continuous_embeddings, topic_spans.knowledge_width
-                    
-                    if config.include_text and config.attention_based:
+                    e1 = None
+                    e2 = None
+                    if config.include_text:
+                        if config.attention_based:
                         # If knowledge embeddings need to be represented similar to spans i.e with attention
-                        e1, e2 = get_expansion_with_attention(span_repr, knowledge_embeddings, first_idx, second_idx, device)
-                    else:
-                        e1 = torch.stack([knowledge_start_end_embeddings[k] for k in first_idx]).to(device)
-                        e2 = torch.stack([knowledge_start_end_embeddings[k] for k in second_idx]).to(device)
+                            e1, e2 = get_expansion_with_attention(span_repr, knowledge_embeddings, first_idx, second_idx, device)
+                        else:
+                            e1 = torch.stack([knowledge_start_end_embeddings[k] for k in first_idx]).to(device)
+                            e2 = torch.stack([knowledge_start_end_embeddings[k] for k in second_idx]).to(device)
 
                     g1_final, g2_final = final_vectors(combined_ids1, combined_ids2, config, g1, g2,
                                                        graph_embeddings_dev, e1, e2)
 
                     scores = pairwise_model(g1_final, g2_final)
+                    
                     loss = criterion(scores.squeeze(
                         1), batch_labels.to(torch.float))
                     accumul_val_loss += loss.item()
+                    print(loss.item())
+                    print(scores.squeeze(1))
+
 
                     # How many labels each sentence has?
                     counting = (

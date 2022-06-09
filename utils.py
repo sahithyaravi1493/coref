@@ -103,7 +103,7 @@ def get_loss_function(config):
     if config.loss == 'hinge':
         return torch.nn.HingeEmbeddingLoss()
     else:
-        return torch.nn.BCEWithLogitsLoss()
+        return torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([config.pos_class_weight]).cuda())
 
 
 def get_optimizer(config, models):
@@ -267,7 +267,7 @@ def save_json(filename, data):
         json.dump(data, fpp)
 
 
-def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embeddings, e1, e2, fusion):
+def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embeddings, e1, e2):
     """
     if include_graph is set to false, returns the span embeddings
     if include_graph is set to true, returns the graph and/ span embeddings
@@ -280,7 +280,7 @@ def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embed
     @param embeddings: dict with all knowledge embeddings, we will look up the ids in this dict
     @return:
     """
-    device = span1.device()
+    device = span1.device
     if not config.include_graph and not config.include_text:
         # if graph is not included, just use spans
         return span1, span2
@@ -295,13 +295,14 @@ def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embed
             g1_new, g2_new = e1, e2
         else:
             # Concatenate span + expansions
-            if fusion = "concat":
+            if config.fusion == "concat":
                 g1_new = torch.cat((span1, e1 ), axis=1)
                 g2_new = torch.cat((span2, e2), axis=1)
             else:
                 fusion_model = SimpleFusionLayer(config).to(device)
-                fusion_model.train()
+                # fusion_model.train()
                 g1_new, g2_new = fusion_model(span1, e1), fusion_model(span2, e2)
+                # print("Fusion", g1_new.shape)
 
     else:
         # if graph is included, load the saved embeddings for this batch

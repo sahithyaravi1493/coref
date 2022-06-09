@@ -139,13 +139,15 @@ class SimpleFusionLayer(nn.Module):
         if config.with_mention_width:
             self.input_layer += config.embedding_dimension
 
-        final_layer = self.input_layer
+        self.final_layer = self.input_layer
         self.input_layer *= 3
 
         self.fusion = nn.Sequential(
-            nn.Linear(self.input_layer, self.final_layer)
+            nn.Dropout(0.1),
+            nn.Linear(self.input_layer, self.final_layer),
+            nn.ReLU(),
         )
 
     def forward(self, first, second):
-        return self.fusion(torch.cat(first, second), dim=1))
+        return self.fusion(torch.cat((first, second), dim=1))
 

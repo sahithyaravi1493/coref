@@ -19,10 +19,11 @@
   "segment": true,
 
   "random_seed": 0,
-  "epochs": 5,
+  "epochs": 10,
   "batch_size": 128,
-  "learning_rate": 1e-6,
+  "learning_rate": 1e-4,
   "weight_decay": 0,
+  "pos_class_weight":2,
   "loss": "bce",
   "optimizer": "adamw",
   "adam_epsilon": 1e-8,
@@ -43,6 +44,7 @@
   "topk":2,
   "expansion_dimension":3092,
   "attention_based": true,
+  "fusion": "concat",
 
   "log_path": "logs/pairwise_scorer_gpt3/",
   "data_folder": "data/ecb/mentions",
