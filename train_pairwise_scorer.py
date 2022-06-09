@@ -48,9 +48,10 @@ def combine_ids(dids, sids):
 
 def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, span_embeddings,
                               first, second, labels, batch_size, criterion, optimizer, combined_indices,
-                              graph_embeddings, span_expansion_embeddings):
+                              graph_embeddings, text_knowledge_embeddings):
     accumulate_loss = 0
     start_end_embeddings, continuous_embeddings, width = span_embeddings
+    knowledge_start_end_embeddings, knowledge_continuous_embeddings, knowledge_width = text_knowledge_embeddings
     device = start_end_embeddings.device
     labels = labels.to(device)
     # width = width.to(device)
@@ -61,26 +62,28 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
         batch_first, batch_second = first[indices], second[indices]
         batch_labels = labels[indices].to(torch.float)
         optimizer.zero_grad()
+    
+        # the look up keys are combined ids we calculated earlier of the form docid_sentenceid
+        combined1 = [combined_indices[k] for k in batch_first]
+        combined2 = [combined_indices[k] for k in batch_second]
+
         g1 = span_repr(start_end_embeddings[batch_first],
                        [continuous_embeddings[k] for k in batch_first], width[batch_first])
         g2 = span_repr(start_end_embeddings[batch_second],
                        [continuous_embeddings[k] for k in batch_second], width[batch_second])
 
-        # calculate the keys to look up graph embeddings for this batch
-        # the look up keys are combined ids we calculated earlier of the form docid_sentenceid
-        combined1 = [combined_indices[k] for k in batch_first]
-        combined2 = [combined_indices[k] for k in batch_second]
-
         e1 = None
         e2 = None
-        if config.include_text:
-            e1 = [span_expansion_embeddings[k] for k in batch_first]
-            e2 = [span_expansion_embeddings[k] for k in batch_second]
 
-        g1_final, g2_final = final_vectors(combined1, combined2, config,
-                                           g1, g2, graph_embeddings, e1, e2)
-        # print(g1_final.size(), g2_final.size)
+        if config.include_text and config.attention_based:
+            # If knowledge embeddings need to be represented similar to spans i.e with attention
+            e1, e2 = get_expansion_with_attention(span_repr, text_knowledge_embeddings, batch_first, batch_second, device)
+        else:
+            e1 = torch.stack([knowledge_start_end_embeddings[k] for k in batch_first]).to(device)
+            e2 = torch.stack([knowledge_start_end_embeddings[k] for k in batch_second]).to(device)
 
+        g1_final, g2_final = final_vectors(combined1, combined2, config, g1, g2, graph_embeddings, e1, e2, fusion="linear")
+        
         scores = pairwise_model(g1_final, g2_final)
 
         if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions'] and not config['exclude_span_repr']:
@@ -104,6 +107,7 @@ def get_all_candidate_spans(config, bert_model, span_repr, span_scorer, data, to
                              docs_embeddings, docs_length, is_training=True)
 
     topic_spans.set_span_labels()
+    span_emb = None
 
     # Pruning the spans according to gold mentions or spans with highiest scores
     if config['use_gold_mentions']:
@@ -132,11 +136,12 @@ def get_all_candidate_spans(config, bert_model, span_repr, span_scorer, data, to
     # print(len(topic_spans.span_texts), len(topic_spans.combined_ids), len(d_ids), len(s_ids))
 
     if config.include_text:
-        span_emb_final = span_emb[span_indices]
-        span_specific_embeddings, span_specific_expansions = get_span_specific_embeddings(topic_spans.start_end_embeddings, topic_spans.combined_ids, span_repr, expansions, expansion_embeddings,
+        if span_emb is not None:
+            span_emb_final = span_emb[span_indices]
+        else:
+            span_emb_final = None
+        topic_spans.knowledge_start_end_embeddings, topic_spans.knowledge_continuous_embeddings, topic_spans.knowledge_width, topic_spans.knowledge_text = get_span_specific_embeddings(topic_spans, span_repr, expansions, expansion_embeddings,
                                                                                           span_emb_final, config)
-        topic_spans.span_expansions = span_specific_expansions
-        topic_spans.span_expansion_embeddings = span_specific_embeddings
 
     return topic_spans
 
@@ -206,21 +211,41 @@ if __name__ == '__main__':
         graph_embeddings_dev = load_stored_embeddings(config, split='val')
 
     if config.include_text:
-        # load expansions
-        expansions_train = load_json(f"comet/train_exp_sentences_ns.json")
-        expansions_val = load_json(f"comet/val_exp_sentences_ns.json")
+        if config.mode == "gpt3":
+            # Load saved embeddings of GPT3
+            # load text expansions
+            expansions_train = pd.read_csv("gpt3/output_train.csv")
+            expansions_val = pd.read_csv("gpt3/output_dev.csv")
 
-        # load embeddings of expansions
-        expansion_embeddings_train = {
-            "startend": load_pkl_dump(f"comet/train_e_startend_ns", ext='hkl'),
-            # "width":  load_pkl_dump(f"comet/train_e_widths", ext='hkl'),
-            # "cont":  load_pkl_dump(f"comet/train_e_cont", ext='hkl')
-        }
-        expansion_embeddings_val = {
-            "startend": load_pkl_dump(f"comet/val_e_startend_ns", ext='hkl'),
-            # "width":  load_pkl_dump(f"comet/val_e_widths", ext='hkl'),
-            # "cont":  load_pkl_dump(f"comet/val_e_cont", ext='hkl')
-        }
+            # load embeddings of expansions
+            expansion_embeddings_train = {
+                "startend": load_pkl_dump(f"gpt3/train_e_startend_ns", ext='pkl'),
+                "width":  load_pkl_dump(f"gpt3/train_e_widths_ns", ext='pkl'),
+                "cont":  load_pkl_dump(f"gpt3/train_e_cont_ns", ext='pkl')
+            }
+            expansion_embeddings_val = {
+                "startend": load_pkl_dump(f"gpt3/dev_e_startend_ns", ext='pkl'),
+                "width":  load_pkl_dump(f"gpt3/dev_e_widths_ns", ext='pkl'),
+                "cont":  load_pkl_dump(f"gpt3/dev_e_cont_ns", ext='pkl')
+            }
+        
+        else:
+            # Load saved embeddings of COMET
+            # load expansions
+            expansions_train = load_json(f"comet/train_exp_sentences_ns.json")
+            expansions_val = load_json(f"comet/val_exp_sentences_ns.json")
+
+            # load embeddings of expansions
+            expansion_embeddings_train = {
+                "startend": load_pkl_dump(f"comet/train_e_startend_ns", ext='hkl'),
+                # "width":  load_pkl_dump(f"comet/train_e_widths", ext='hkl'),
+                # "cont":  load_pkl_dump(f"comet/train_e_cont", ext='hkl')
+            }
+            expansion_embeddings_val = {
+                "startend": load_pkl_dump(f"comet/val_e_startend_ns", ext='hkl'),
+                # "width":  load_pkl_dump(f"comet/val_e_widths", ext='hkl'),
+                # "cont":  load_pkl_dump(f"comet/val_e_cont", ext='hkl')
+            }
     
     # Model initiation
     logger.info('Init models')
@@ -246,6 +271,7 @@ if __name__ == '__main__':
     if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions']:
         models.append(span_repr)
         models.append(span_scorer)
+    print("Models array, ", models)
     optimizer = get_optimizer(config, models)
     criterion = get_loss_function(config)
 
@@ -275,9 +301,10 @@ if __name__ == '__main__':
             first, second, pairwise_labels = get_pairwise_labels(
                 topic_spans.labels, is_training=config['neg_samp'])
             span_embeddings = topic_spans.start_end_embeddings, topic_spans.continuous_embeddings, topic_spans.width
+            knowledge_embeddings = topic_spans.knowledge_start_end_embeddings, topic_spans.knowledge_continuous_embeddings, topic_spans.knowledge_width
             loss = train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, span_embeddings, first,
                                              second, pairwise_labels, config['batch_size'], criterion, optimizer,
-                                             topic_spans.combined_ids, graph_embeddings_train, topic_spans.span_expansion_embeddings
+                                             topic_spans.combined_ids, graph_embeddings_train, knowledge_embeddings
                                              )
             
             accumulate_loss += loss
@@ -299,18 +326,19 @@ if __name__ == '__main__':
         all_scores, all_labels = [], []
         count = collections.defaultdict(set)
 
-        # Additional lists for debugging
+        # Additional lists for debugging later
         all_spans, all_span_expansions = [], []
         all_lookups = []
         all_pairs1, all_pairs2 = [], []
         all_s1, all_s2 = [], []
+        all_k1, all_k2 = [],[]
 
         for topic_num, topic in enumerate(tqdm(dev_set.topic_list)):
             topic_spans = get_all_candidate_spans(
                 config, bert_model, span_repr, span_scorer, dev_set, topic_num, bert_tokenizer, expansions_val, expansion_embeddings_val)
 
             if config.include_text:
-                all_span_expansions.extend(topic_spans.span_expansions)
+                all_span_expansions.extend(topic_spans.knowledge_text)
 
             all_spans.extend(topic_spans.span_texts)  
             all_lookups.extend(topic_spans.combined_ids)
@@ -328,24 +356,24 @@ if __name__ == '__main__':
             c2 = [topic_spans.combined_ids[k] for k in second]
             span1 = [topic_spans.span_texts[k] for k in first]
             span2 = [topic_spans.span_texts[k] for k in second]
-            e1, e2 = None, None
+            k1 = [topic_spans.knowledge_text[k] for k in first]
+            k2 = [topic_spans.knowledge_text[k] for k in second]
 
             all_s1.extend(span1)
             all_s2.extend(span2)
             all_pairs1.extend(c1)
             all_pairs2.extend(c2)
-
-            if config.include_text:
-                e1 = [topic_spans.span_expansion_embeddings[k] for k in first]
-                e2 = [topic_spans.span_expansion_embeddings[k] for k in second]
-            #############
+            all_k1.extend(k1)
+            all_k2.extend(k2)
             
             # Plot the cosine similarity of embeddings for this topic based on labels
             if config['plot_cosine']:
                 # Plot    
                 gr1, gr2 = final_vectors(c1, c2, config, topic_spans.start_end_embeddings[first], 
                 topic_spans.start_end_embeddings[second],
-                graph_embeddings_dev, e1, e2)
+                graph_embeddings_dev, [topic_spans.knowledge_start_end_embeddings[k]
+                            for k in first], [topic_spans.knowledge_start_end_embeddings[k]
+                            for k in second])
                 plot_this_batch(gr1, gr2, span1, span2, c1, c2, pairwise_labels.to(torch.float))    
             
             with torch.no_grad():
@@ -366,13 +394,15 @@ if __name__ == '__main__':
                                      for k in first_idx]
                     combined_ids2 = [topic_spans.combined_ids[k]
                                      for k in second_idx]
-
-                    e1, e2 = None, None
-                    if config.include_text:
-                        e1 = [topic_spans.span_expansion_embeddings[k]
-                            for k in first_idx]
-                        e2 = [topic_spans.span_expansion_embeddings[k]
-                            for k in second_idx]
+                    
+                    knowledge_embeddings = topic_spans.knowledge_start_end_embeddings, topic_spans.knowledge_continuous_embeddings, topic_spans.knowledge_width
+                    
+                    if config.include_text and config.attention_based:
+                        # If knowledge embeddings need to be represented similar to spans i.e with attention
+                        e1, e2 = get_expansion_with_attention(span_repr, knowledge_embeddings, first_idx, second_idx, device)
+                    else:
+                        e1 = torch.stack([knowledge_start_end_embeddings[k] for k in first_idx]).to(device)
+                        e2 = torch.stack([knowledge_start_end_embeddings[k] for k in second_idx]).to(device)
 
                     g1_final, g2_final = final_vectors(combined_ids1, combined_ids2, config, g1, g2,
                                                        graph_embeddings_dev, e1, e2)
@@ -421,10 +451,16 @@ if __name__ == '__main__':
             df_span.to_csv('span_examples_ns.csv')
 
         strict_preds = (all_scores > 0).to(torch.int)
+        logger.info(
+            'Number of predictions: {}/{}'.format(strict_preds.sum(), len(strict_preds)))
+        logger.info('Number of positive pairs: {}/{}'.format(len(torch.nonzero(all_labels == 1)),
+                                                             len(all_labels)))
         eval = Evaluation(strict_preds, all_labels.to(device))
+        
 
         # Document wrong predictions
         compare = (strict_preds == all_labels.to(device))
+        print(compare)
         indices = (torch.where(compare == 0))
         print(len(all_labels), len(indices[0]))
         wrong_predictions = pd.DataFrame()
@@ -432,16 +468,23 @@ if __name__ == '__main__':
         wrong_predictions["c2"] = [all_pairs2[k] for k in indices[0]]
         wrong_predictions["span1"] = [all_s1[k] for k in indices[0]]
         wrong_predictions["span2"] = [all_s2[k] for k in indices[0]]
+        if config.include_text:
+            wrong_predictions["exp1"] = [all_k1[k] for k in indices[0]]
+            wrong_predictions["exp2"] = [all_k2[k] for k in indices[0]]
+
         sents = '/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_dev.csv'
         if os.path.exists(sents):
             df_sents = pd.read_csv(sents)
             sent1 = []
             sent2 = []
+            span_exp1 = []
+            span_exp2 = []
             for idx, row in wrong_predictions.iterrows():
-                sent = df_sents[df_sents["combined_id"] == c1]
+                sent = df_sents[df_sents["combined_id"] == row["c1"]]
                 sent1.append(sent["sentence"].values[0])
-                sent = df_sents[df_sents["combined_id"] == c2]
+                sent = df_sents[df_sents["combined_id"] == row["c2"]]
                 sent2.append(sent["sentence"].values[0])
+
 
             wrong_predictions["sent1"] = sent1
             wrong_predictions["sent2"] = sent2
@@ -451,10 +494,7 @@ if __name__ == '__main__':
 
         #########
     
-        logger.info(
-            'Number of predictions: {}/{}'.format(strict_preds.sum(), len(strict_preds)))
-        logger.info('Number of positive pairs: {}/{}'.format(len(torch.nonzero(all_labels == 1)),
-                                                             len(all_labels)))
+
         logger.info('Strict - Recall: {}, Precision: {}, F1: {}'.format(eval.get_recall(),
                                                                         eval.get_precision(), eval.get_f1()))
         f1.append(eval.get_f1())

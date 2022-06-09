@@ -49,6 +49,7 @@ class SpanEmbedder(nn.Module):
 
     def forward(self, start_end, continuous_embeddings, width):
         vector = start_end
+        # print([v.size() for v in vector])
         if self.use_head_attention:
             padded_tokens_embeddings, masks = self.pad_continous_embeddings(continuous_embeddings)
             attention_scores = self.self_attention_layer(padded_tokens_embeddings).squeeze(-1)
@@ -127,4 +128,24 @@ class SimplePairWiseClassifier(nn.Module):
 
     def forward(self, first, second):
         return self.pairwise_mlp(torch.cat((first, second, first * second), dim=1))
+
+
+
+class SimpleFusionLayer(nn.Module):
+    def __init__(self, config):
+        super(SimpleFusionLayer, self).__init__()
+        self.input_layer = config.bert_hidden_size * 3 if config.with_head_attention else config.bert_hidden_size * 2
+
+        if config.with_mention_width:
+            self.input_layer += config.embedding_dimension
+
+        final_layer = self.input_layer
+        self.input_layer *= 3
+
+        self.fusion = nn.Sequential(
+            nn.Linear(self.input_layer, self.final_layer)
+        )
+
+    def forward(self, first, second):
+        return self.fusion(torch.cat(first, second), dim=1))
 
