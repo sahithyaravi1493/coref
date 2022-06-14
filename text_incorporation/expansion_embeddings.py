@@ -61,6 +61,7 @@ if __name__ == '__main__':
             # save_pkl_dump(f"comet/{split}_e_cont", continuous_embeddings)
             # save_pkl_dump(f"comet/{split}_e_widths", widths)
     elif MODE == "gpt3":
+        ORDER = 'sort'
         for split in ['train', 'dev']:
             df = pd.read_csv(f'gpt3/output_{split}.csv')
             for index, row in tqdm(df.iterrows(), total=df.shape[0]):
@@ -71,6 +72,7 @@ if __name__ == '__main__':
                 key = (row["combined_id"], row["event"])
                 if len(inferences) != 2:
                     print(key)
+                print(inferences.split("."))
                 # Tokenize all inferences
                 token_ids = []
                 for inf in inferences:

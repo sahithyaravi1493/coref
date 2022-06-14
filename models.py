@@ -143,10 +143,11 @@ class SimpleFusionLayer(nn.Module):
         self.input_layer *= 3
 
         self.fusion = nn.Sequential(
-            nn.Dropout(0.1),
+            # nn.Dropout(0.1),
             nn.Linear(self.input_layer, self.final_layer),
             nn.ReLU(),
         )
+        self.fusion.apply(init_weights)
 
     def forward(self, first, second):
         return self.fusion(torch.cat((first, second), dim=1))

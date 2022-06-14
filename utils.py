@@ -14,7 +14,7 @@ from datetime import datetime
 import pickle
 from corpus import Corpus
 from tqdm import tqdm
-from models import SimpleFusionLayer
+
 import plotly.express as px
 import plotly.figure_factory as ff
 import hickle as hkl
@@ -267,7 +267,7 @@ def save_json(filename, data):
         json.dump(data, fpp)
 
 
-def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embeddings, e1, e2):
+def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embeddings, e1, e2, fusion_model=None):
     """
     if include_graph is set to false, returns the span embeddings
     if include_graph is set to true, returns the graph and/ span embeddings
@@ -296,11 +296,9 @@ def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embed
         else:
             # Concatenate span + expansions
             if config.fusion == "concat":
-                g1_new = torch.cat((span1, e1 ), axis=1)
-                g2_new = torch.cat((span2, e2), axis=1)
+                g1_new = torch.cat((e1, span1), axis=1)
+                g2_new = torch.cat((e2, span2), axis=1)
             else:
-                fusion_model = SimpleFusionLayer(config).to(device)
-                # fusion_model.train()
                 g1_new, g2_new = fusion_model(span1, e1), fusion_model(span2, e2)
                 # print("Fusion", g1_new.shape)
 

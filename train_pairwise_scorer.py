@@ -17,10 +17,12 @@ import torch
 import os
 import collections
 import pandas as pd
+from models import SimpleFusionLayer
+from torch.optim.lr_scheduler import StepLR
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-gc.collect()
-torch.cuda.empty_cache()
+# os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+# gc.collect()
+# torch.cuda.empty_cache()
 
 
 os.environ["WANDB_SILENT"] = "true"
@@ -30,7 +32,7 @@ wandb.init(
     notes="add rgcn",
 
 )
-wandb.run.name = f'original-classifier-with-node-embeddings'
+
 
 
 def combine_ids(dids, sids):
@@ -48,7 +50,7 @@ def combine_ids(dids, sids):
 
 def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, span_embeddings,
                               first, second, labels, batch_size, criterion, optimizer, combined_indices,
-                              graph_embeddings, text_knowledge_embeddings):
+                              graph_embeddings, text_knowledge_embeddings, fusion_model=None):
     accumulate_loss = 0
     start_end_embeddings, continuous_embeddings, width = span_embeddings
     knowledge_start_end_embeddings, knowledge_continuous_embeddings, knowledge_width = text_knowledge_embeddings
@@ -56,12 +58,14 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
     labels = labels.to(device)
     # width = width.to(device)
 
+
     idx = shuffle(list(range(len(first))), random_state=config.random_seed)
     for i in range(0, len(first), batch_size):
         indices = idx[i:i+batch_size]
         batch_first, batch_second = first[indices], second[indices]
         batch_labels = labels[indices].to(torch.float)
         optimizer.zero_grad()
+        
     
         # the look up keys are combined ids we calculated earlier of the form docid_sentenceid
         combined1 = [combined_indices[k] for k in batch_first]
@@ -83,10 +87,11 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
                 e1 = torch.stack([knowledge_start_end_embeddings[k] for k in batch_first]).to(device)
                 e2 = torch.stack([knowledge_start_end_embeddings[k] for k in batch_second]).to(device)
 
-        g1_final, g2_final = final_vectors(combined1, combined2, config, g1, g2, graph_embeddings, e1, e2)
+        g1_final, g2_final = final_vectors(combined1, combined2, config, g1, g2, graph_embeddings, e1, e2,
+        fusion_model)
         
         scores = pairwise_model(g1_final, g2_final)
-        print(scores.squeeze(1))
+        # print(scores.squeeze(1))
 
         if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions'] and not config['exclude_span_repr']:
             g1_score = span_scorer(g1)
@@ -97,6 +102,7 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
         accumulate_loss += loss.item()
         loss.backward()
         optimizer.step()
+        
 
 
     return accumulate_loss
@@ -192,6 +198,7 @@ if __name__ == '__main__':
     logger = create_logger(config, create_file=True)
     logger.info(pyhocon.HOCONConverter.convert(config, "hocon"))
     create_folder(config['model_path'])
+    wandb.run.name = f'{config["log_path"].replace("logs/", "")}'
 
     device = torch.device('cuda') if torch.cuda.is_available() else 'cpu'
 
@@ -267,6 +274,7 @@ if __name__ == '__main__':
     span_scorer.eval()
 
     pairwise_model = SimplePairWiseClassifier(config).to(device)
+    fusion_model = SimpleFusionLayer(config).to(device)
 
     # Optimizer and loss function
     models = [pairwise_model]
@@ -275,6 +283,7 @@ if __name__ == '__main__':
         models.append(span_scorer)
     print("Models array, ", models)
     optimizer = get_optimizer(config, models)
+    scheduler = StepLR(optimizer, step_size=3, gamma=0.1)
     criterion = get_loss_function(config)
 
     logger.info('Number of parameters of mention extractor: {}'.format(
@@ -288,6 +297,10 @@ if __name__ == '__main__':
         logger.info('Epoch: {}'.format(epoch))
 
         pairwise_model.train()
+
+        if config.fusion == "linear":
+            fusion_model.train()
+
         if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions']:
             span_repr.train()
             span_scorer.train()
@@ -306,7 +319,8 @@ if __name__ == '__main__':
             knowledge_embeddings = topic_spans.knowledge_start_end_embeddings, topic_spans.knowledge_continuous_embeddings, topic_spans.knowledge_width
             loss = train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, span_embeddings, first,
                                              second, pairwise_labels, config['batch_size'], criterion, optimizer,
-                                             topic_spans.combined_ids, graph_embeddings_train, knowledge_embeddings
+                                             topic_spans.combined_ids, graph_embeddings_train, knowledge_embeddings,
+                                             fusion_model
                                              )
             
             accumulate_loss += loss
@@ -317,12 +331,14 @@ if __name__ == '__main__':
             total_number_of_pairs))
         logger.info('Accumulate loss: {}'.format(accumulate_loss))
         wandb.log({'train loss': accumulate_loss})
+        scheduler.step()
 
         logger.info('Evaluate on the dev set')
 
         span_repr.eval()
         span_scorer.eval()
         pairwise_model.eval()
+        fusion_model.eval()
         accumul_val_loss = 0
 
         all_scores, all_labels = [], []
@@ -371,13 +387,13 @@ if __name__ == '__main__':
 
             
             # Plot the cosine similarity of embeddings for this topic based on labels
-            if config['plot_cosine']:
+            if config['plot_cosine'] and (epoch == config["epochs"]-1):
                 # Plot    
+                exp1 = torch.stack([topic_spans.knowledge_start_end_embeddings[k] for k in first]).to(device)
+                exp2 = torch.stack([topic_spans.knowledge_start_end_embeddings[k] for k in second]).to(device)
                 gr1, gr2 = final_vectors(c1, c2, config, topic_spans.start_end_embeddings[first], 
                 topic_spans.start_end_embeddings[second],
-                graph_embeddings_dev, [topic_spans.knowledge_start_end_embeddings[k]
-                            for k in first], [topic_spans.knowledge_start_end_embeddings[k]
-                            for k in second])
+                graph_embeddings_dev, exp1, exp2)
                 plot_this_batch(gr1, gr2, span1, span2, c1, c2, pairwise_labels.to(torch.float))    
             
             with torch.no_grad():
@@ -411,15 +427,15 @@ if __name__ == '__main__':
                             e2 = torch.stack([knowledge_start_end_embeddings[k] for k in second_idx]).to(device)
 
                     g1_final, g2_final = final_vectors(combined_ids1, combined_ids2, config, g1, g2,
-                                                       graph_embeddings_dev, e1, e2)
+                                                       graph_embeddings_dev, e1, e2, fusion_model)
 
                     scores = pairwise_model(g1_final, g2_final)
                     
                     loss = criterion(scores.squeeze(
                         1), batch_labels.to(torch.float))
                     accumul_val_loss += loss.item()
-                    print(loss.item())
-                    print(scores.squeeze(1))
+                    # print(loss.item())
+                    # print(scores.squeeze(1))
 
 
                     # How many labels each sentence has?
@@ -458,7 +474,7 @@ if __name__ == '__main__':
             if os.path.exists(sents):
                 df_sents = pd.read_csv(sents)
                 df_span = df_span.merge(df_sents, on='combined_id')
-            df_span.to_csv('span_examples_ns.csv')
+            df_span.to_csv(f"{config.log_path}/span_examples_ns.csv")
 
         strict_preds = (all_scores > 0).to(torch.int)
         logger.info(
@@ -500,7 +516,7 @@ if __name__ == '__main__':
             wrong_predictions["sent2"] = sent2
             wrong_predictions["actual_labels"] =  [all_labels[k] for k in indices[0]]
 
-        wrong_predictions.to_csv("errors.csv")
+        wrong_predictions.to_csv(f"{config.log_path}/errors.csv")
 
         #########
     
