@@ -21,8 +21,8 @@ from models import SimpleFusionLayer
 from torch.optim.lr_scheduler import StepLR
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-# gc.collect()
-# torch.cuda.empty_cache()
+gc.collect()
+torch.cuda.empty_cache()
 
 
 os.environ["WANDB_SILENT"] = "true"
@@ -82,7 +82,7 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
         if config.include_text:
             if config.attention_based:
                 # If knowledge embeddings need to be represented similar to spans i.e with attention
-                e1, e2 = get_expansion_with_attention(span_repr, text_knowledge_embeddings, batch_first, batch_second, device)
+                e1, e2 = get_expansion_with_attention(span_repr, text_knowledge_embeddings, batch_first, batch_second, device, config)
             else:
                 e1 = torch.stack([knowledge_start_end_embeddings[k] for k in batch_first]).to(device)
                 e2 = torch.stack([knowledge_start_end_embeddings[k] for k in batch_second]).to(device)
@@ -228,14 +228,14 @@ if __name__ == '__main__':
 
             # load embeddings of expansions
             expansion_embeddings_train = {
-                "startend": load_pkl_dump(f"gpt3/train_e_startend_ns", ext='pkl'),
-                "width":  load_pkl_dump(f"gpt3/train_e_widths_ns", ext='pkl'),
-                "cont":  load_pkl_dump(f"gpt3/train_e_cont_ns", ext='pkl')
+                "startend": load_pkl_dump(f"gpt3/train_e_startend_ind", ext='pkl'),
+                "width":  load_pkl_dump(f"gpt3/train_e_widths_ind", ext='pkl'),
+                "cont":  load_pkl_dump(f"gpt3/train_e_cont_ind", ext='pkl')
             }
             expansion_embeddings_val = {
-                "startend": load_pkl_dump(f"gpt3/dev_e_startend_ns", ext='pkl'),
-                "width":  load_pkl_dump(f"gpt3/dev_e_widths_ns", ext='pkl'),
-                "cont":  load_pkl_dump(f"gpt3/dev_e_cont_ns", ext='pkl')
+                "startend": load_pkl_dump(f"gpt3/dev_e_startend_ind", ext='pkl'),
+                "width":  load_pkl_dump(f"gpt3/dev_e_widths_ind", ext='pkl'),
+                "cont":  load_pkl_dump(f"gpt3/dev_e_cont_ind", ext='pkl')
             }
         
         else:
@@ -281,9 +281,9 @@ if __name__ == '__main__':
     if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions']:
         models.append(span_repr)
         models.append(span_scorer)
-    print("Models array, ", models)
+    # print("Models array, ", models)
     optimizer = get_optimizer(config, models)
-    scheduler = StepLR(optimizer, step_size=3, gamma=0.1)
+    scheduler = StepLR(optimizer, step_size=2, gamma=0.1)
     criterion = get_loss_function(config)
 
     logger.info('Number of parameters of mention extractor: {}'.format(
@@ -421,7 +421,7 @@ if __name__ == '__main__':
                     if config.include_text:
                         if config.attention_based:
                         # If knowledge embeddings need to be represented similar to spans i.e with attention
-                            e1, e2 = get_expansion_with_attention(span_repr, knowledge_embeddings, first_idx, second_idx, device)
+                            e1, e2 = get_expansion_with_attention(span_repr, knowledge_embeddings, first_idx, second_idx, device, config)
                         else:
                             e1 = torch.stack([knowledge_start_end_embeddings[k] for k in first_idx]).to(device)
                             e2 = torch.stack([knowledge_start_end_embeddings[k] for k in second_idx]).to(device)

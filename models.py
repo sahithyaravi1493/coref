@@ -110,8 +110,8 @@ class SimplePairWiseClassifier(nn.Module):
             if config.exclude_span_repr:
                 # exclude span representation, use only the knowledge embedding
                 self.input_layer = 0
-            # configure the # of expansions picked using topk and embedding dimension = 2048(start-end)/3092(attention)
-            self.input_layer += config.expansion_dimension * (config.topk)
+            # configure the # of expansions uding n_inferences and embedding dimension = 2048(start-end)/3092(attention)
+            self.input_layer += config.expansion_dimension * (config.n_inferences)
 
         self.input_layer *= 3
         self.hidden_layer = config.hidden_layer

@@ -339,7 +339,7 @@ def get_span_specific_embeddings(topic_spans, span_repr, all_expansions, all_exp
             # print("EVent", cid, event, topic_spans.width[i])
             key = (cid, event)
             # The vector specific to this event
-            se, cont, width = torch.zeros(2, 2048), torch.zeros(2, 1024), torch.tensor([80, 65])
+            se, cont, width = torch.zeros(config.n_inferences, 2048), torch.zeros(config.n_inferences, 1024), torch.tensor([80]*config.n_inferences)
         
             if key in all_expansion_embeddings['startend']:
                 # Key value lookup of saved expansions
@@ -348,7 +348,7 @@ def get_span_specific_embeddings(topic_spans, span_repr, all_expansions, all_exp
                 width = torch.tensor(all_expansion_embeddings['width'][key])
             else: 
                 misses += 1
-            # print(cont.size())
+            # print("width", width.size())
            
             selection = all_expansions.loc[all_expansions["combined_id"] == cid]
             selection = selection[all_expansions["event"] == event]
@@ -356,7 +356,7 @@ def get_span_specific_embeddings(topic_spans, span_repr, all_expansions, all_exp
                 final_expansions = ""
             else:
                 final_expansions = selection["predictions"].values[0]
-            # print("CONT", cont.size())
+            # print("SE", se.size())
             csk_start_ends.append(se)
             csk_widths.append(width)
             csk_continuous.append(cont)
@@ -396,33 +396,65 @@ def get_span_specific_embeddings(topic_spans, span_repr, all_expansions, all_exp
     return csk_start_ends, csk_continuous, csk_widths, fine_grained_expansions
 
 
-def get_expansion_with_attention(span_repr, knowledge_embs, batch_first, batch_second, device):
+# def get_expansion_with_attention(span_repr, knowledge_embs, batch_first, batch_second, device):
+#     knowledge_start_end_embeddings, knowledge_continuous_embeddings, knowledge_width = knowledge_embs
+#     n_spans = len(knowledge_continuous_embeddings)
+#     n_relations = 2
+#     before_se, before_ce, before_w = [], [], []
+#     after_se, after_ce, after_w = [], [], []
+#     for i in range(n_spans):
+#         before_se.append(knowledge_start_end_embeddings[i][0])
+#         after_se.append(knowledge_start_end_embeddings[i][1])
+#         before_ce.append(knowledge_continuous_embeddings[i][0].reshape(-1, 1024).to(device))
+#         after_ce.append(knowledge_continuous_embeddings[i][1].reshape(-1, 1024).to(device))   
+#         before_w.append(knowledge_width[i][0])
+#         after_w.append(knowledge_width[i][1])
+    
+#     before_se = torch.stack(before_se).to(device)
+#     after_se = torch.stack(after_se).to(device)
+#     before_w, after_w = torch.stack(before_w).to(device), torch.stack(after_w).to(device)
+#     # print(before_se.shape, before_w.shape)
+#     bef1 = span_repr(before_se[batch_first],
+#                        [before_ce[k] for k in batch_first], before_w[batch_first])
+#     bef2 = span_repr(before_se[batch_second],
+#                        [before_ce[k] for k in batch_second], before_w[batch_second])
+#     aft1 = span_repr(after_se[batch_first],
+#                        [after_ce[k] for k in batch_first], after_w[batch_first])
+#     aft2 = span_repr(after_se[batch_second],
+#                        [after_ce[k] for k in batch_second], after_w[batch_second])
+#     # print(bef1.shape, aft1.shape)
+#     e1 = torch.cat((bef1, aft1), axis=1)
+#     e2 = torch.cat((bef2, aft2), axis=1)
+#     return e1, e2
+
+def get_expansion_with_attention(span_repr, knowledge_embs, batch_first, batch_second, device, config):
     knowledge_start_end_embeddings, knowledge_continuous_embeddings, knowledge_width = knowledge_embs
     n_spans = len(knowledge_continuous_embeddings)
-    n_relations = 2
-    before_se, before_ce, before_w = [], [], []
+    n_relations = config.n_inferences
+    all_se, all_ce, all_w = [[] for i in range(n_relations)], [[] for i in range(n_relations)], [[] for i in range(n_relations)]
     after_se, after_ce, after_w = [], [], []
     for i in range(n_spans):
-        before_se.append(knowledge_start_end_embeddings[i][0])
-        after_se.append(knowledge_start_end_embeddings[i][1])
-        before_ce.append(knowledge_continuous_embeddings[i][0].reshape(-1, 1024).to(device))
-        after_ce.append(knowledge_continuous_embeddings[i][1].reshape(-1, 1024).to(device))   
-        before_w.append(knowledge_width[i][0])
-        after_w.append(knowledge_width[i][1])
-    
-    before_se = torch.stack(before_se).to(device)
-    after_se = torch.stack(after_se).to(device)
-    before_w, after_w = torch.stack(before_w).to(device), torch.stack(after_w).to(device)
-    # print(before_se.shape, before_w.shape)
-    bef1 = span_repr(before_se[batch_first],
-                       [before_ce[k] for k in batch_first], before_w[batch_first])
-    bef2 = span_repr(before_se[batch_second],
-                       [before_ce[k] for k in batch_second], before_w[batch_second])
-    aft1 = span_repr(after_se[batch_first],
-                       [after_ce[k] for k in batch_first], after_w[batch_first])
-    aft2 = span_repr(after_se[batch_second],
-                       [after_ce[k] for k in batch_second], after_w[batch_second])
-    # print(bef1.shape, aft1.shape)
-    e1 = torch.cat((bef1, aft1), axis=1)
-    e2 = torch.cat((bef2, aft2), axis=1)
+        for j in range(n_relations):
+            all_se[j].append(knowledge_start_end_embeddings[i][j])
+            all_ce[j].append(knowledge_continuous_embeddings[i][j].reshape(-1, 1024).to(device))
+            all_w[j].append(knowledge_width[i][j])
+    e1 = None
+    e2 = None
+    for i in range(n_relations):
+        current_se = torch.stack(all_se[i]).to(device)
+        current_ce = all_ce[i]
+        current_w = torch.stack(all_w[i]).to(device)
+        #print(current_se.shape, current_ce.shape)
+        emb1 = span_repr(current_se[batch_first],
+                        [current_ce[k] for k in batch_first], current_w[batch_first])
+        emb2 = span_repr(current_se[batch_second],
+                        [current_ce[k] for k in batch_second], current_w[batch_second])
+        # print(emb1.shape, emb2.shape)
+        if e1 == None:
+            e1, e2 = emb1, emb2
+        else:
+            e1 = torch.cat((e1, emb1), axis=1)
+            e2 = torch.cat((e2, emb2), axis=1)
+
+    # print(e1.shape, e2.shape)
     return e1, e2

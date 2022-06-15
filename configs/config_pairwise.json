@@ -1,5 +1,5 @@
 {
-  "gpu_num" : [3],
+  "gpu_num" : [0],
   "bert_tokenizer": "roberta-large",
   "bert_model": "roberta-large",
   "bert_hidden_size": 1024,
@@ -19,9 +19,9 @@
   "segment": true,
 
   "random_seed": 0,
-  "epochs": 5,
+  "epochs": 6,
   "batch_size": 128,
-  "learning_rate": 1e-4,
+  "learning_rate": 1e-3,
   "weight_decay": 0,
   "pos_class_weight":2,
   "loss": "bce",
@@ -30,25 +30,28 @@
   "segment_window": 512,
   "neg_samp": true,
   "exact": false,
+  "exclude_span_repr": false,
 
   "include_graph": false,
   "knowledge_embedding_dimension": 200,
   "relations_per_sentence": 50,
-  "exclude_span_repr": true,
   "embedding_type": "rgcn",
   "stored_embeddings_path": "comet/rgcn_hidden",
-  "plot_cosine": true,
+
   
   "include_text": true,
   "mode": "gpt3",
-  "topk":2,
+  "n_inferences":16,
   "expansion_dimension":3092,
   "attention_based": true,
   "fusion": "concat",
+  
+  "plot_cosine": true,
 
-  "log_path": "logs/pairwise_weighted_excluded/",
+
+  "log_path": "logs/pairwise_weighted_concat_sorted",
   "data_folder": "data/ecb/mentions",
   "span_repr_path": "models/span_scorers/events_span_repr_0",
   "span_scorer_path": "models/span_scorers/events_span_scorer_0",
-  "model_path": "models/pairwise_weighted_excluded/"
+  "model_path": "models/pairwise_weighted_concat_sorted/"
 }
