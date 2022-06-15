@@ -1,5 +1,5 @@
 {
-  "gpu_num" : [0],
+  "gpu_num" : [2],
   "bert_tokenizer": "roberta-large",
   "bert_model": "roberta-large",
   "bert_hidden_size": 1024,
@@ -20,8 +20,8 @@
 
   "random_seed": 0,
   "epochs": 6,
-  "batch_size": 128,
-  "learning_rate": 1e-3,
+  "batch_size": 64,
+  "learning_rate": 1e-4,
   "weight_decay": 0,
   "pos_class_weight":2,
   "loss": "bce",
@@ -41,12 +41,12 @@
   
   "include_text": true,
   "mode": "gpt3",
-  "n_inferences":16,
+  "n_inferences":2,
   "expansion_dimension":3092,
   "attention_based": true,
   "fusion": "concat",
   
-  "plot_cosine": true,
+  "plot_cosine": false,
 
 
   "log_path": "logs/pairwise_weighted_concat_sorted",
