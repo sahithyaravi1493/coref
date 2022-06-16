@@ -294,13 +294,49 @@ def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embed
         if config.exclude_span_repr:
             g1_new, g2_new = e1, e2
         else:
-            # Concatenate span + expansions
+            D = int(e1.shape[1]/2)
+            before1_init =  e1[:,:D]
+            after1_init = e1[:,D:]
+            before2_init =  e2[:,:D]
+            after2_init =  e2[:,D:]
+            # Concatenate span + expansio
             if config.fusion == "concat":
+                # span1 + Inferences for span1
                 g1_new = torch.cat((e1, span1), axis=1)
                 g2_new = torch.cat((e2, span2), axis=1)
-            else:
-                g1_new, g2_new = fusion_model(span1, e1), fusion_model(span2, e2)
+            elif config.fusion == "linear":
+                # Linear(inferences for span1, span1)
+                before1, after1 = fusion_model(span1, before1_init,config), fusion_model(span1, after1_init,config)
+                before2, after2 = fusion_model(span2, before2_init,config), fusion_model(span2, after2_init,config)
+                g1_new = torch.cat((span1, before1, after1), axis=1)
+                g2_new = torch.cat((span2, before2, after2), axis=1)
                 # print("Fusion", g1_new.shape)
+            elif config.fusion == "intraspan":
+                # Intra-span - key =inferences for span1, query= span1
+                before1, before1_weights = fusion_model(span1, before1_init, config)
+                after1, after1_weights =  fusion_model(span1, after1_init ,config)
+                before2, before2_weights = fusion_model(span2, before2_init,config)
+                after2, after2_weights  = fusion_model(span2,after2_init,config)
+                g1_new = torch.cat((span1, before1, after1), axis=1)
+                g2_new = torch.cat((span2, before2, after2), axis=1)
+            elif config.fusion == "interspan":
+                # Inter-span - key =inferences for span1, query= span2
+                before1, before1_weights = fusion_model(span2, before1_init, config)
+                after1, after1_weights =  fusion_model(span2 after1_init ,config)
+                before2, before2_weights = fusion_model(span1, before2_init,config)
+                after2, after2_weights  = fusion_model(span1,after2_init,config)
+                g1_new = torch.cat((span1, before1, after1), axis=1)
+                g2_new = torch.cat((span2, before2, after2), axis=1)
+            elif config.fusion == "interspan_full":
+                # Inter-span-full = key =inferences for span1, query= (span2 and inferences for span2)
+                before1, before1_weights = fusion_model(torch.cat((span2, before2_init), axis=1), before1_init, config)
+                after1, after1_weights =  fusion_model(torch.cat((span2, after2_init), axis=1), after1_init ,config)
+                before2, before2_weights = fusion_model(torch.cat((span1, before1_init), axis=1), before2_init,config)
+                after2, after2_weights  = fusion_model(torch.cat((span1, after1_init), axis=1),after2_init,config)
+                g1_new = torch.cat((span1, before1, after1), axis=1)
+                g2_new = torch.cat((span2, before2, after2), axis=1)  
+            else:
+                print("To fuse span with before and after, select a fusion method among - linear, concat, multi-head attention")
 
     else:
         # if graph is included, load the saved embeddings for this batch

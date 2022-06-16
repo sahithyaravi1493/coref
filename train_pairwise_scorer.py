@@ -228,14 +228,14 @@ if __name__ == '__main__':
 
             # load embeddings of expansions
             expansion_embeddings_train = {
-                "startend": load_pkl_dump(f"gpt3/train_e_startend_ns", ext='pkl'),
-                "width":  load_pkl_dump(f"gpt3/train_e_widths_ns", ext='pkl'),
-                "cont":  load_pkl_dump(f"gpt3/train_e_cont_ns", ext='pkl')
+                "startend": load_pkl_dump(f"gpt3/train_e_startend_ind", ext='pkl'),
+                "width":  load_pkl_dump(f"gpt3/train_e_widths_ind", ext='pkl'),
+                "cont":  load_pkl_dump(f"gpt3/train_e_cont_ind", ext='pkl')
             }
             expansion_embeddings_val = {
-                "startend": load_pkl_dump(f"gpt3/dev_e_startend_ns", ext='pkl'),
-                "width":  load_pkl_dump(f"gpt3/dev_e_widths_ns", ext='pkl'),
-                "cont":  load_pkl_dump(f"gpt3/dev_e_cont_ns", ext='pkl')
+                "startend": load_pkl_dump(f"gpt3/dev_e_startend_ind", ext='pkl'),
+                "width":  load_pkl_dump(f"gpt3/dev_e_widths_ind", ext='pkl'),
+                "cont":  load_pkl_dump(f"gpt3/dev_e_cont_ind", ext='pkl')
             }
         
         else:
@@ -283,7 +283,7 @@ if __name__ == '__main__':
         models.append(span_scorer)
     # print("Models array, ", models)
     optimizer = get_optimizer(config, models)
-    scheduler = StepLR(optimizer, step_size=3, gamma=0.1)
+    scheduler = StepLR(optimizer, step_size=4, gamma=0.1)
     criterion = get_loss_function(config)
 
     logger.info('Number of parameters of mention extractor: {}'.format(

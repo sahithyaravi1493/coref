@@ -17,13 +17,12 @@
   "subtopic": true,
   "use_predicted_topics": false,
   "segment": true,
-
   "random_seed": 0,
-  "epochs": 6,
-  "batch_size": 64,
-  "learning_rate": 1e-4,
+  "epochs": 10,
+  "batch_size": 128,
+  "learning_rate": 1e-3,
   "weight_decay": 0,
-  "pos_class_weight":2,
+  "pos_class_weight":1,
   "loss": "bce",
   "optimizer": "adamw",
   "adam_epsilon": 1e-8,
@@ -34,24 +33,24 @@
 
   "include_graph": false,
   "knowledge_embedding_dimension": 200,
-  "relations_per_sentence": 50,
+  "relations_per_sentence": 18,
   "embedding_type": "rgcn",
   "stored_embeddings_path": "comet/rgcn_hidden",
 
   
   "include_text": true,
   "mode": "gpt3",
-  "n_inferences":2,
+  "n_inferences":16,
   "expansion_dimension":3092,
   "attention_based": true,
-  "fusion": "concat",
+  "fusion": "intra-span",
   
   "plot_cosine": false,
 
 
-  "log_path": "logs/pairwise_weighted_concat_sorted",
+  "log_path": "logs/pairwise_inraspan",
   "data_folder": "data/ecb/mentions",
   "span_repr_path": "models/span_scorers/events_span_repr_0",
   "span_scorer_path": "models/span_scorers/events_span_scorer_0",
-  "model_path": "models/pairwise_weighted_concat_sorted/"
+  "model_path": "models/pairwise_inraspan/"
 }

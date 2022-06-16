@@ -129,6 +129,7 @@ if __name__ == '__main__':
 
 
     elif MODE == "gpt3-individual":
+        PADDING = False
         for split in ['train', 'dev']:
             df = pd.read_csv(f'gpt3/output_{split}.csv')
             for index, row in tqdm(df.iterrows(), total=df.shape[0]):
@@ -153,11 +154,12 @@ if __name__ == '__main__':
                 # Find all embeddings of the inferences and find start_end_embeddings
                 
                 embds, l = pad_and_read_bert(token_ids, bert_model)
-               
-                
-                embeddings =  F.pad(embds, pad=(0, 0, 0, 0, 0, 16 - embds.shape[0]))
-                lengths = np.pad(l, (0, 16-l.shape[0]), 'constant', constant_values=(0))
-                # print(lengths.shape)
+                embeddings = embds
+                lengths = l
+                if PADDING:
+                    embeddings =  F.pad(embds, pad=(0, 0, 0, 0, 0, 16 - embds.shape[0]))
+                    lengths = np.pad(l, (0, 16-l.shape[0]), 'constant', constant_values=(0))
+                print(embeddings.shape)
 
                 starts = embeddings[:, 0, :]
                 ends = embeddings[:, -1, :]

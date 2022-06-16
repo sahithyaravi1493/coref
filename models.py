@@ -111,7 +111,7 @@ class SimplePairWiseClassifier(nn.Module):
                 # exclude span representation, use only the knowledge embedding
                 self.input_layer = 0
             # configure the # of expansions uding n_inferences and embedding dimension = 2048(start-end)/3092(attention)
-            self.input_layer += config.expansion_dimension * (config.n_inferences)
+            self.input_layer += config.expansion_dimension * (config.relations_per_sentence)
 
         self.input_layer *= 3
         self.hidden_layer = config.hidden_layer
@@ -133,6 +133,8 @@ class SimplePairWiseClassifier(nn.Module):
 
 class SimpleFusionLayer(nn.Module):
     def __init__(self, config):
+        num_heads = 2
+        self.embed_dim = 3092
         super(SimpleFusionLayer, self).__init__()
         self.input_layer = config.bert_hidden_size * 3 if config.with_head_attention else config.bert_hidden_size * 2
 
@@ -140,15 +142,27 @@ class SimpleFusionLayer(nn.Module):
             self.input_layer += config.embedding_dimension
 
         self.final_layer = self.input_layer
-        self.input_layer *= 3
+        self.input_layer *= int(config.n_inferences/2)+1
+        if config.fusion == "linear":
+            self.fusion = nn.Sequential(
+                # nn.Dropout(0.1),
+                nn.Linear(self.embed_dim, self.final_layer),
+                nn.ReLU(),
+            )
+            self.fusion.apply(init_weights)
+        else:
+            self.fusion = nn.MultiheadAttention(self.embed_dim, num_heads, batch_first=False, dropout=0.1)
 
-        self.fusion = nn.Sequential(
-            # nn.Dropout(0.1),
-            nn.Linear(self.input_layer, self.final_layer),
-            nn.ReLU(),
-        )
-        self.fusion.apply(init_weights)
-
-    def forward(self, first, second):
-        return self.fusion(torch.cat((first, second), dim=1))
+    def forward(self, first, second, config):
+        if config.fusion == "linear":
+            return self.fusion(torch.cat((first, second), dim=1))
+        else:
+            # print("first, second", first.shape, second.shape)
+            # Sequence length * Batch size * embedding dimension
+            query = first.reshape(int(first.shape[1]/self.embed_dim),first.shape[0],-1)
+            key = second.reshape(int(second.shape[1]/self.embed_dim),second.shape[0], -1)
+            value = second.reshape(int(second.shape[1]/self.embed_dim),second.shape[0],-1)
+            attn_output, attn_output_weights = self.fusion(query, key, value)
+   
+            return attn_output.squeeze(0).reshape(first.shape[0], -1),attn_output_weights
 
