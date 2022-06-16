@@ -39,7 +39,7 @@ def text_processing(inference):
 
 if __name__ == '__main__':
     # Choose whether to embed GPT3 or COMET
-    MODE = 'gpt3'
+    MODE = 'gpt3-individual'
     # Check GPU
     if torch.cuda.is_available():
         print("### USING GPU:0")
@@ -129,7 +129,7 @@ if __name__ == '__main__':
 
 
     elif MODE == "gpt3-individual":
-        PADDING = False
+        PADDING = True
         for split in ['train', 'dev']:
             df = pd.read_csv(f'gpt3/output_{split}.csv')
             for index, row in tqdm(df.iterrows(), total=df.shape[0]):
@@ -139,10 +139,11 @@ if __name__ == '__main__':
                 for i in range(len(inferences)):
                     inferences[i] = text_processing(inferences[i])
                 
-                before_array = sorted([inf+ "." for inf in inferences[0].split(".") if len(inf.split())>3])
-                after_array = sorted([inf+ "." for inf in inferences[1].split(".") if len(inf.split())>3])
+                before_array = sorted([inf+ "." for inf in inferences[0].split(".") if len(inf.split())>3])[:5]
+                after_array = sorted([inf+ "." for inf in inferences[1].split(".") if len(inf.split())>3])[:5]
                 # before_array = before_array + [" "]*(7-len(before_array))
                 # after_array = after_array + [" "]*(7-len(after_array))
+                # print("before, after arrays", len(after_array), len(after_array))
                 final_array = before_array + after_array
                 final_array.sort()
                 token_ids = []
@@ -157,8 +158,8 @@ if __name__ == '__main__':
                 embeddings = embds
                 lengths = l
                 if PADDING:
-                    embeddings =  F.pad(embds, pad=(0, 0, 0, 0, 0, 16 - embds.shape[0]))
-                    lengths = np.pad(l, (0, 16-l.shape[0]), 'constant', constant_values=(0))
+                    embeddings =  F.pad(embds, pad=(0, 0, 0, 0, 0, 10 - embds.shape[0]))
+                    lengths = np.pad(l, (0, 10-l.shape[0]), 'constant', constant_values=(0))
                 print(embeddings.shape)
 
                 starts = embeddings[:, 0, :]
@@ -170,11 +171,12 @@ if __name__ == '__main__':
                 # print(embeddings.shape)
                 widths[key] = lengths
                 torch.cuda.empty_cache()
+                # break
                 
                 
                 
-            # hkl.dump(start_end_embeddings, f"gpt3/{split}_e_startend_ns.hkl", mode='w')
-            # hkl.dump(widths, f"gpt3/{split}_e_widths_ns.hkl", mode='w')
+            # # hkl.dump(start_end_embeddings, f"gpt3/{split}_e_startend_ns.hkl", mode='w')
+            # # hkl.dump(widths, f"gpt3/{split}_e_widths_ns.hkl", mode='w')
             save_pkl_dump(f"gpt3/{split}_e_startend_ind", start_end_embeddings)
             save_pkl_dump(f"gpt3/{split}_e_widths_ind", widths)
             save_pkl_dump(f"gpt3/{split}_e_cont_ind", continuous_embeddings)

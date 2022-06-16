@@ -20,7 +20,7 @@ import pandas as pd
 from models import SimpleFusionLayer
 from torch.optim.lr_scheduler import StepLR
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 gc.collect()
 torch.cuda.empty_cache()
 
@@ -283,7 +283,7 @@ if __name__ == '__main__':
         models.append(span_scorer)
     # print("Models array, ", models)
     optimizer = get_optimizer(config, models)
-    scheduler = StepLR(optimizer, step_size=4, gamma=0.1)
+    scheduler = StepLR(optimizer, step_size=2, gamma=0.1)
     criterion = get_loss_function(config)
 
     logger.info('Number of parameters of mention extractor: {}'.format(

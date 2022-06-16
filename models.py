@@ -133,7 +133,7 @@ class SimplePairWiseClassifier(nn.Module):
 
 class SimpleFusionLayer(nn.Module):
     def __init__(self, config):
-        num_heads = 2
+        self.num_heads = 1
         self.embed_dim = 3092
         super(SimpleFusionLayer, self).__init__()
         self.input_layer = config.bert_hidden_size * 3 if config.with_head_attention else config.bert_hidden_size * 2
@@ -151,7 +151,7 @@ class SimpleFusionLayer(nn.Module):
             )
             self.fusion.apply(init_weights)
         else:
-            self.fusion = nn.MultiheadAttention(self.embed_dim, num_heads, batch_first=False, dropout=0.1)
+            self.fusion = nn.MultiheadAttention(self.embed_dim, self.num_heads, batch_first=False)
 
     def forward(self, first, second, config):
         if config.fusion == "linear":

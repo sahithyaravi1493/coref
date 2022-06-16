@@ -299,6 +299,8 @@ def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embed
             after1_init = e1[:,D:]
             before2_init =  e2[:,:D]
             after2_init =  e2[:,D:]
+            both1_init = e1
+            both2_init = e2
             # Concatenate span + expansio
             if config.fusion == "concat":
                 # span1 + Inferences for span1
@@ -313,16 +315,16 @@ def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embed
                 # print("Fusion", g1_new.shape)
             elif config.fusion == "intraspan":
                 # Intra-span - key =inferences for span1, query= span1
-                before1, before1_weights = fusion_model(span1, before1_init, config)
-                after1, after1_weights =  fusion_model(span1, after1_init ,config)
-                before2, before2_weights = fusion_model(span2, before2_init,config)
-                after2, after2_weights  = fusion_model(span2,after2_init,config)
-                g1_new = torch.cat((span1, before1, after1), axis=1)
-                g2_new = torch.cat((span2, before2, after2), axis=1)
+                # print("Attention inputs", span1.shape, both1_init.shape)
+                e1_new, e1_weights = fusion_model(span1, both1_init, config)
+                e2_new, e2_weights = fusion_model(span2, both2_init,config)
+                g1_new = torch.cat((span1, e1_new), axis=1)
+                g2_new = torch.cat((span2, e2_new), axis=1)
+                # print("Attention output", g1_new.shape, g2_new.shape)
             elif config.fusion == "interspan":
                 # Inter-span - key =inferences for span1, query= span2
                 before1, before1_weights = fusion_model(span2, before1_init, config)
-                after1, after1_weights =  fusion_model(span2 after1_init ,config)
+                after1, after1_weights =  fusion_model(span2 ,after1_init ,config)
                 before2, before2_weights = fusion_model(span1, before2_init,config)
                 after2, after2_weights  = fusion_model(span1,after2_init,config)
                 g1_new = torch.cat((span1, before1, after1), axis=1)
@@ -492,5 +494,5 @@ def get_expansion_with_attention(span_repr, knowledge_embs, batch_first, batch_s
             e1 = torch.cat((e1, emb1), axis=1)
             e2 = torch.cat((e2, emb2), axis=1)
 
-    # print(e1.shape, e2.shape)
+    # print("Roberta embedded inference embeddings E1, E2", e1.shape, e2.shape)
     return e1, e2
