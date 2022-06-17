@@ -44,7 +44,8 @@
   "expansion_dimension":3092,
   "attention_based": true,
   "fusion": "concat",
-  
+  "inferences_path": "gpt3/output",
+  "text_embeddings_path": "gpt3/gpt3_consolidated",
   "plot_cosine": false,
 
 

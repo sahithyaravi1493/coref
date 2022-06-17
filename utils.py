@@ -1,23 +1,22 @@
-import collections
+import json
 import logging
 import os
-import torch
-import torch.nn as nn
+import pickle
 import random
+import smtplib
+from datetime import datetime
+
+import hickle as hkl
 import numpy as np
 import pandas as pd
-import smtplib
+import plotly.figure_factory as ff
+import torch
+import torch.nn as nn
 import torch.optim as optim
 from transformers import AdamW, get_linear_schedule_with_warmup
-import json
-from datetime import datetime
-import pickle
-from corpus import Corpus
-from tqdm import tqdm
 
-import plotly.express as px
-import plotly.figure_factory as ff
-import hickle as hkl
+from corpus import Corpus
+
 
 def create_corpus(config, tokenizer, split_name, is_training=True):
     docs_path = os.path.join(config.data_folder, split_name + '.json')
@@ -38,7 +37,8 @@ def create_corpus(config, tokenizer, split_name, is_training=True):
 
     logging.info('Split - {}'.format(split_name))
 
-    return Corpus(documents, tokenizer, config.segment_window, mentions, subtopic=config.subtopic, predicted_topics=predicted_topics)
+    return Corpus(documents, tokenizer, config.segment_window, mentions, subtopic=config.subtopic,
+                  predicted_topics=predicted_topics)
 
 
 def create_logger(config, create_file=True):
@@ -59,6 +59,7 @@ def create_logger(config, create_file=True):
     logger.propagate = True
 
     return logger
+
 
 # def create_logger(config, create_file=True):
 #     logging.basicConfig(datefmt='%Y-%m-%d %H:%M:%S')
@@ -112,7 +113,8 @@ def get_optimizer(config, models):
         parameters += list(model.parameters())
 
     if config.optimizer == "adam":
-        return optim.Adam(parameters, lr=config.learning_rate, weight_decay=config.weight_decay, eps=config.adam_epsilon)
+        return optim.Adam(parameters, lr=config.learning_rate, weight_decay=config.weight_decay,
+                          eps=config.adam_epsilon)
     elif config.optimizer == "adamw":
         return AdamW(parameters, lr=config.learning_rate, weight_decay=config.weight_decay, eps=config.adam_epsilon)
     else:
@@ -134,7 +136,6 @@ def add_to_dic(dic, key, val):
 
 
 def send_email(user, pwd, recipient, subject, body):
-
     FROM = user
     TO = recipient if isinstance(recipient, list) else [recipient]
     SUBJECT = subject
@@ -192,7 +193,7 @@ def load_pkl_dump(filename, ext='pkl'):
 
     with open(f'{filename}.pickle', 'rb') as handle:
         a = pickle.load(handle)
-    
+
     return a
 
 
@@ -208,6 +209,19 @@ def load_stored_embeddings(config, split):
     else:
         embedding = load_pickle(f"{config.stored_embeddings_path}_{split}.pkl")
         return embedding
+
+
+def load_text_embeddings(config, split):
+    if config.mode == "comet":
+        expansions = load_json(f"{config.inferences_path}_exp_sentences_ns.json")
+    else:
+        expansions = pd.read_csv(f"{config.inferences_path}_{split}.csv")
+    embeddings = {
+        "startend": load_pkl_dump(f"{config.text_embeddings_path}_{split}_startend", ext='pkl'),
+        "width": load_pkl_dump(f"{config.text_embeddings_path}_{split}_widths", ext='pkl'),
+        "cont": load_pkl_dump(f"{config.text_embeddings_path}_{split}_cont", ext='pkl')
+    }
+    return expansions, embeddings
 
 
 def batch_saved_embeddings(batch_ids, config, embedding):
@@ -231,7 +245,6 @@ def batch_saved_embeddings(batch_ids, config, embedding):
 
 
 def plot_this_batch(g1, g2, span1, span2, c1, c2, batch_labels):
-
     # Plot cosine similarity of embeddings g1 and g2
     cos = nn.CosineSimilarity(dim=1, eps=1e-8)
     cosine_similarities = cos(g1, g2).cpu().detach().numpy()
@@ -241,7 +254,7 @@ def plot_this_batch(g1, g2, span1, span2, c1, c2, batch_labels):
     # print(len(pos_indices), len(neg_indices))
     if len(pos_indices) > 1 and len(neg_indices) > 1:
         fig = ff.create_distplot([cosine_similarities[pos_indices], cosine_similarities[neg_indices]], [
-                                 'corefering pairs', 'non-corefering pairs'], bin_size=0.01)
+            'corefering pairs', 'non-corefering pairs'], bin_size=0.01)
         fig.update_layout(
             title_text='Cosine similarity of span start-end embeddings')
         fig.show()
@@ -249,12 +262,13 @@ def plot_this_batch(g1, g2, span1, span2, c1, c2, batch_labels):
     # Find how many corefering pairs have cosine sim less than 0.9
     less = (cosine_similarities[pos_indices] > 0.9).sum()
     count = len(cosine_similarities[pos_indices])
-    print("Corefering pairs with similarity more than 0.9", less/count)
+    print("Corefering pairs with similarity more than 0.9", less / count)
 
     # Find how many non-corefering pairs have cosine sim greater than 0.9
     great = (cosine_similarities[neg_indices] > 0.9).sum()
     count = len(cosine_similarities[neg_indices])
-    print(f"Non-corefering pairs with cosine sim greater than 0.9 {count} {great/count}")
+    print(f"Non-corefering pairs with cosine sim greater than 0.9 {count} {great / count}")
+
 
 def load_json(filepath):
     with open(filepath, 'r') as fp:
@@ -269,8 +283,8 @@ def save_json(filename, data):
 
 def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embeddings, e1, e2, fusion_model=None):
     """
-    if include_graph is set to false, returns the span embeddings
-    if include_graph is set to true, returns the graph and/ span embeddings
+    if include_graph/include_text is set to false, returns the span embeddings
+    if include_graph/include_text is set to true, returns the knowledge+span embeddings
 
     @param first_batch_ids: keys of first batch
     @param second_batch_ids: keys of second batch
@@ -280,70 +294,65 @@ def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embed
     @param embeddings: dict with all knowledge embeddings, we will look up the ids in this dict
     @return:
     """
-    device = span1.device
+    # device = span1.device
+    before1_weights, after1_weights, before2_weights, after2_weights = None, None, None, None
     if not config.include_graph and not config.include_text:
-        # if graph is not included, just use spans
+        # if graph is not included, and text is not just return spans
         return span1, span2, []
 
     elif config.include_text:
-        
         e1 = e1.reshape(len(first_batch_ids), -1)
         e2 = e2.reshape(len(second_batch_ids), -1)
-        # print("PAIRWISE SHAPE", e1.size(), e2.size())
-        before1_weights, after1_weights, before2_weights, after2_weights = None, None, None, None
-        
-        D = int(e1.shape[1]/2)
-        before1_init =  e1[:,:D]
-        after1_init = e1[:,D:]
-        before2_init =  e2[:,:D]
-        after2_init =  e2[:,D:]
+
+        D = int(e1.shape[1] / 2)
+        before1_init = e1[:, :D]
+        after1_init = e1[:, D:]
+        before2_init = e2[:, :D]
+        after2_init = e2[:, D:]
         both1_init = e1
         both2_init = e2
-            
+
         if config.fusion == "linear":
-            # Linear(inferences for span1, span1)
-            before1, after1 = fusion_model(span1, before1_init,config), fusion_model(span1, after1_init,config)
-            before2, after2 = fusion_model(span2, before2_init,config), fusion_model(span2, after2_init,config)
-            e1_new = torch.cat(( before1, after1), axis=1)
+           # Maps span1*before1 embeddings into a single vector
+            before1, after1 = fusion_model(span1, before1_init, config), fusion_model(span1, after1_init, config)
+            before2, after2 = fusion_model(span2, before2_init, config), fusion_model(span2, after2_init, config)
+            e1_new = torch.cat((before1, after1), axis=1)
             e2_new = torch.cat((before2, after2), axis=1)
             # print("Fusion", g1_new.shape)
         elif config.fusion == "intraspan":
             # Intra-span - key =inferences for span1, query= span1
             # print("Attention inputs", span1.shape, both1_init.shape)
             before1, before1_weights = fusion_model(span1, before1_init, config)
-            after1, after1_weights =  fusion_model(span1 ,after1_init ,config)
-            before2, before2_weights = fusion_model(span2, before2_init,config)
-            after2, after2_weights  = fusion_model(span2,after2_init,config)
-            e1_new = torch.cat(( before1, after1), axis=1)
+            after1, after1_weights = fusion_model(span1, after1_init, config)
+            before2, before2_weights = fusion_model(span2, before2_init, config)
+            after2, after2_weights = fusion_model(span2, after2_init, config)
+            e1_new = torch.cat((before1, after1), axis=1)
             e2_new = torch.cat((before2, after2), axis=1)
             # print("Attention output", g1_new.shape, g2_new.shape)
         elif config.fusion == "interspan":
             # Inter-span - key =inferences for span1, query= span2
             before1, before1_weights = fusion_model(span2, before1_init, config)
-            after1, after1_weights =  fusion_model(span2 ,after1_init ,config)
-            before2, before2_weights = fusion_model(span1, before2_init,config)
-            after2, after2_weights  = fusion_model(span1,after2_init,config)
-            e1_new = torch.cat(( before1, after1), axis=1)
+            after1, after1_weights = fusion_model(span2, after1_init, config)
+            before2, before2_weights = fusion_model(span1, before2_init, config)
+            after2, after2_weights = fusion_model(span1, after2_init, config)
+            e1_new = torch.cat((before1, after1), axis=1)
             e2_new = torch.cat((before2, after2), axis=1)
         elif config.fusion == "interspan_full":
             # Inter-span-full = key =inferences for span1, query= (span2 and inferences for span2)
             before1, before1_weights = fusion_model(torch.cat((span2, before2_init), axis=1), before1_init, config)
-            after1, after1_weights =  fusion_model(torch.cat((span2, after2_init), axis=1), after1_init ,config)
-            before2, before2_weights = fusion_model(torch.cat((span1, before1_init), axis=1), before2_init,config)
-            after2, after2_weights  = fusion_model(torch.cat((span1, after1_init), axis=1),after2_init,config)
-            e1_new = torch.cat(( before1, after1), axis=1)
-            e2_new = torch.cat(( before2, after2), axis=1)  
+            after1, after1_weights = fusion_model(torch.cat((span2, after2_init), axis=1), after1_init, config)
+            before2, before2_weights = fusion_model(torch.cat((span1, before1_init), axis=1), before2_init, config)
+            after2, after2_weights = fusion_model(torch.cat((span1, after1_init), axis=1), after2_init, config)
+            e1_new = torch.cat((before1, after1), axis=1)
+            e2_new = torch.cat((before2, after2), axis=1)
         else:
             e1_new, e2_new = e1, e2
-            #print("To fuse span with before and after, select a fusion method among - linear, concat, multi-head attention")
-        
+
         if config.exclude_span_repr:
             g1_new, g2_new = e1_new, e2_new
         else:
             g1_new = torch.cat((span1, e1_new), axis=1)
             g2_new = torch.cat((span2, e2_new), axis=1)
-       
-             
     else:
         # if graph is included, load the saved embeddings for this batch
         graph1 = batch_saved_embeddings(first_batch_ids, config, embeddings)
@@ -363,8 +372,27 @@ def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embed
     return g1_new, g2_new, [before1_weights, after1_weights, before2_weights, after2_weights]
 
 
-def get_span_specific_embeddings(topic_spans, span_repr, all_expansions, all_expansion_embeddings, span_embeddings, config):
-   
+def get_span_specific_embeddings(topic_spans, span_repr, all_expansions, all_expansion_embeddings, span_embeddings,
+                                 config):
+    """
+    This function takes a set of spans in the topic, finds the exact expansion embedding for each span and returns it
+    The start-end, continuos and length embeddings are specific to each span.
+    @param topic_spans:
+    @type topic_spans:
+    @param span_repr:
+    @type span_repr:
+    @param all_expansions:
+    @type all_expansions:
+    @param all_expansion_embeddings:
+    @type all_expansion_embeddings:
+    @param span_embeddings:
+    @type span_embeddings:
+    @param config:
+    @type config:
+    @return:
+    @rtype:
+    """
+
     span_start_end_embeddings = topic_spans.start_end_embeddings
     combined_ids = topic_spans.combined_ids
     events = topic_spans.span_texts
@@ -381,17 +409,19 @@ def get_span_specific_embeddings(topic_spans, span_repr, all_expansions, all_exp
             # print("EVent", cid, event, topic_spans.width[i])
             key = (cid, event)
             # The vector specific to this event
-            se, cont, width = torch.zeros(config.n_inferences, 2048), torch.zeros(config.n_inferences, 1024), torch.tensor([80]*config.n_inferences)
-        
+            se, cont, width = torch.zeros(config.n_inferences, 2048), torch.zeros(config.n_inferences,
+                                                                                  1024), torch.tensor(
+                [80] * config.n_inferences)
+
             if key in all_expansion_embeddings['startend']:
                 # Key value lookup of saved expansions
                 se = torch.tensor(all_expansion_embeddings['startend'][key])
                 cont = torch.tensor(all_expansion_embeddings['cont'][key])
                 width = torch.tensor(all_expansion_embeddings['width'][key])
-            else: 
+            else:
                 misses += 1
             # print("width", width.size())
-           
+
             selection = all_expansions.loc[all_expansions["combined_id"] == cid]
             selection = selection[all_expansions["event"] == event]
             if selection.empty:
@@ -415,13 +445,13 @@ def get_span_specific_embeddings(topic_spans, span_repr, all_expansions, all_exp
                 width = torch.tensor(all_expansion_embeddings['width'][key]).cuda()
                 with torch.no_grad():
                     candidate_tensors = span_repr(se, cont, width)
-                span = span_embeddings[i].view(1,-1)
+                span = span_embeddings[i].view(1, -1)
             else:
                 candidate_tensors = torch.tensor(all_expansion_embeddings['startend'][key]).cuda()
                 # find the top 5 expacnsion embeddings that are similar to the span
                 span = span_start_end_embeddings[i].view(1, -1)
             # print(span.size(), candidate_tensors.size())
-            
+
             # print(span)
 
             distances = cos(candidate_tensors, span)
@@ -433,7 +463,7 @@ def get_span_specific_embeddings(topic_spans, span_repr, all_expansions, all_exp
             final_expansions = expansions[indices.cpu().detach().numpy()]
             csk_start_ends.append(final_selection)
             fine_grained_expansions.append(final_expansions)
-    # print("WE MISSED", misses)
+    print("WE MISSED", misses)
     # print(type(csk_continuous[0]), type(csk_widths[0]))
     return csk_start_ends, csk_continuous, csk_widths, fine_grained_expansions
 
@@ -451,7 +481,7 @@ def get_span_specific_embeddings(topic_spans, span_repr, all_expansions, all_exp
 #         after_ce.append(knowledge_continuous_embeddings[i][1].reshape(-1, 1024).to(device))   
 #         before_w.append(knowledge_width[i][0])
 #         after_w.append(knowledge_width[i][1])
-    
+
 #     before_se = torch.stack(before_se).to(device)
 #     after_se = torch.stack(after_se).to(device)
 #     before_w, after_w = torch.stack(before_w).to(device), torch.stack(after_w).to(device)
@@ -473,7 +503,8 @@ def get_expansion_with_attention(span_repr, knowledge_embs, batch_first, batch_s
     knowledge_start_end_embeddings, knowledge_continuous_embeddings, knowledge_width = knowledge_embs
     n_spans = len(knowledge_continuous_embeddings)
     n_relations = config.n_inferences
-    all_se, all_ce, all_w = [[] for i in range(n_relations)], [[] for i in range(n_relations)], [[] for i in range(n_relations)]
+    all_se, all_ce, all_w = [[] for i in range(n_relations)], [[] for i in range(n_relations)], [[] for i in
+                                                                                                 range(n_relations)]
     after_se, after_ce, after_w = [], [], []
     for i in range(n_spans):
         for j in range(n_relations):
@@ -486,11 +517,11 @@ def get_expansion_with_attention(span_repr, knowledge_embs, batch_first, batch_s
         current_se = torch.stack(all_se[i]).to(device)
         current_ce = all_ce[i]
         current_w = torch.stack(all_w[i]).to(device)
-        #print(current_se.shape, current_ce.shape)
+        # print(current_se.shape, current_ce.shape)
         emb1 = span_repr(current_se[batch_first],
-                        [current_ce[k] for k in batch_first], current_w[batch_first])
+                         [current_ce[k] for k in batch_first], current_w[batch_first])
         emb2 = span_repr(current_se[batch_second],
-                        [current_ce[k] for k in batch_second], current_w[batch_second])
+                         [current_ce[k] for k in batch_second], current_w[batch_second])
         # print(emb1.shape, emb2.shape)
         if e1 == None:
             e1, e2 = emb1, emb2
