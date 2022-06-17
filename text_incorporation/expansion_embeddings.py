@@ -39,7 +39,7 @@ def text_processing(inference):
 
 if __name__ == '__main__':
     # Choose whether to embed GPT3 or COMET
-    MODE = 'gpt3-individual'
+    MODE = 'gpt3'
     # Check GPU
     if torch.cuda.is_available():
         print("### USING GPU:0")
@@ -94,8 +94,8 @@ if __name__ == '__main__':
                 for i in range(len(inferences)):
                     inferences[i] = text_processing(inferences[i])
                 
-                before_array = sorted([inf.lstrip() for inf in inferences[0].split(".") if len(inf.split())>3],reverse=True)
-                after_array = sorted([inf.lstrip() for inf in inferences[1].split(".") if len(inf.split())>3], reverse=True)
+                before_array = sorted([inf.lstrip() for inf in inferences[0].split(".") if len(inf.split())>3],reverse=False)
+                after_array = sorted([inf.lstrip() for inf in inferences[1].split(".") if len(inf.split())>3], reverse=False)
                 # print(before_array, after_array)
                 before_inferences = ". ".join(before_array).lstrip(". ") + "."
                 after_inferences = ". ".join(after_array).lstrip(". ")+ "."

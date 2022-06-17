@@ -1,10 +1,10 @@
 {
-  "gpu_num" : [3],
+  "gpu_num" : [2],
   "bert_tokenizer": "roberta-large",
   "bert_model": "roberta-large",
   "bert_hidden_size": 1024,
   "hidden_layer": 1024,
-  "dropout": 0.3,
+  "dropout": 0.1,
   "with_mention_width": true,
   "with_head_attention": true,
   "embedding_dimension": 20,
@@ -20,7 +20,7 @@
   "random_seed": 0,
   "epochs": 6,
   "batch_size": 512,
-  "learning_rate": 1e-3,
+  "learning_rate": 1e-4,
   "weight_decay": 0,
   "pos_class_weight":2,
   "loss": "bce",
@@ -29,7 +29,7 @@
   "segment_window": 512,
   "neg_samp": true,
   "exact": false,
-  "exclude_span_repr": false,
+  "exclude_span_repr": true,
 
   "include_graph": false,
   "knowledge_embedding_dimension": 200,
@@ -40,17 +40,17 @@
   
   "include_text": true,
   "mode": "gpt3",
-  "n_inferences":10,
+  "n_inferences":2,
   "expansion_dimension":3092,
   "attention_based": true,
-  "fusion": "interspan",
+  "fusion": "concat",
   
   "plot_cosine": false,
 
 
-  "log_path": "logs/pairwise_interspan",
+  "log_path": "logs/pairwise_excluded/",
   "data_folder": "data/ecb/mentions",
   "span_repr_path": "models/span_scorers/events_span_repr_0",
   "span_scorer_path": "models/span_scorers/events_span_scorer_0",
-  "model_path": "models/pairwise_interspan/"
+  "model_path": "models/pairwise_excluded/"
 }

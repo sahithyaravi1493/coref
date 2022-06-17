@@ -149,9 +149,9 @@ class SimpleFusionLayer(nn.Module):
                 nn.Linear(self.embed_dim, self.final_layer),
                 nn.ReLU(),
             )
-            self.fusion.apply(init_weights)
         else:
             self.fusion = nn.MultiheadAttention(self.embed_dim, self.num_heads, batch_first=False)
+        self.fusion.apply(init_weights)
 
     def forward(self, first, second, config):
         if config.fusion == "linear":
@@ -164,5 +164,5 @@ class SimpleFusionLayer(nn.Module):
             value = second.reshape(int(second.shape[1]/self.embed_dim),second.shape[0],-1)
             attn_output, attn_output_weights = self.fusion(query, key, value)
    
-            return attn_output.squeeze(0).reshape(first.shape[0], -1),attn_output_weights
+            return attn_output.squeeze(0).reshape(first.shape[0], -1),attn_output_weights.cpu().detach().numpy().reshape(first.shape[0], -1)
 

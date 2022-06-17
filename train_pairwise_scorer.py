@@ -20,7 +20,7 @@ import pandas as pd
 from models import SimpleFusionLayer
 from torch.optim.lr_scheduler import StepLR
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 gc.collect()
 torch.cuda.empty_cache()
 
@@ -87,9 +87,8 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
                 e1 = torch.stack([knowledge_start_end_embeddings[k] for k in batch_first]).to(device)
                 e2 = torch.stack([knowledge_start_end_embeddings[k] for k in batch_second]).to(device)
 
-        g1_final, g2_final = final_vectors(combined1, combined2, config, g1, g2, graph_embeddings, e1, e2,
-        fusion_model)
-        
+        g1_final, g2_final, w = final_vectors(combined1, combined2, config, g1, g2, graph_embeddings, e1, e2, fusion_model)
+        # print(w)
         scores = pairwise_model(g1_final, g2_final)
         # print(scores.squeeze(1))
 
@@ -227,15 +226,16 @@ if __name__ == '__main__':
             expansions_val = pd.read_csv("gpt3/output_dev.csv")
 
             # load embeddings of expansions
+            x = "ns"
             expansion_embeddings_train = {
-                "startend": load_pkl_dump(f"gpt3/train_e_startend_ind", ext='pkl'),
-                "width":  load_pkl_dump(f"gpt3/train_e_widths_ind", ext='pkl'),
-                "cont":  load_pkl_dump(f"gpt3/train_e_cont_ind", ext='pkl')
+                "startend": load_pkl_dump(f"gpt3/train_e_startend_{x}", ext='pkl'),
+                "width":  load_pkl_dump(f"gpt3/train_e_widths_{x}", ext='pkl'),
+                "cont":  load_pkl_dump(f"gpt3/train_e_cont_{x}", ext='pkl')
             }
             expansion_embeddings_val = {
-                "startend": load_pkl_dump(f"gpt3/dev_e_startend_ind", ext='pkl'),
-                "width":  load_pkl_dump(f"gpt3/dev_e_widths_ind", ext='pkl'),
-                "cont":  load_pkl_dump(f"gpt3/dev_e_cont_ind", ext='pkl')
+                "startend": load_pkl_dump(f"gpt3/dev_e_startend_{x}", ext='pkl'),
+                "width":  load_pkl_dump(f"gpt3/dev_e_widths_{x}", ext='pkl'),
+                "cont":  load_pkl_dump(f"gpt3/dev_e_cont_{x}", ext='pkl')
             }
         
         else:
@@ -283,7 +283,7 @@ if __name__ == '__main__':
         models.append(span_scorer)
     # print("Models array, ", models)
     optimizer = get_optimizer(config, models)
-    scheduler = StepLR(optimizer, step_size=2, gamma=0.1)
+    scheduler = StepLR(optimizer, step_size=4, gamma=0.1)
     criterion = get_loss_function(config)
 
     logger.info('Number of parameters of mention extractor: {}'.format(
@@ -350,7 +350,7 @@ if __name__ == '__main__':
         all_pairs1, all_pairs2 = [], []
         all_s1, all_s2 = [], []
         all_k1, all_k2 = [],[]
-
+        all_b1, all_b2, all_a1, all_a2 = [],[],[],[]
         for topic_num, topic in enumerate(tqdm(dev_set.topic_list)):
             topic_spans = get_all_candidate_spans(
                 config, bert_model, span_repr, span_scorer, dev_set, topic_num, bert_tokenizer, expansions_val, expansion_embeddings_val)
@@ -391,7 +391,7 @@ if __name__ == '__main__':
                 # Plot    
                 exp1 = torch.stack([topic_spans.knowledge_start_end_embeddings[k] for k in first]).to(device)
                 exp2 = torch.stack([topic_spans.knowledge_start_end_embeddings[k] for k in second]).to(device)
-                gr1, gr2 = final_vectors(c1, c2, config, topic_spans.start_end_embeddings[first], 
+                gr1, gr2, _ = final_vectors(c1, c2, config, topic_spans.start_end_embeddings[first], 
                 topic_spans.start_end_embeddings[second],
                 graph_embeddings_dev, exp1, exp2)
                 plot_this_batch(gr1, gr2, span1, span2, c1, c2, pairwise_labels.to(torch.float))    
@@ -426,10 +426,19 @@ if __name__ == '__main__':
                             e1 = torch.stack([knowledge_start_end_embeddings[k] for k in first_idx]).to(device)
                             e2 = torch.stack([knowledge_start_end_embeddings[k] for k in second_idx]).to(device)
 
-                    g1_final, g2_final = final_vectors(combined_ids1, combined_ids2, config, g1, g2,
+                    g1_final, g2_final, attn_weights = final_vectors(combined_ids1, combined_ids2, config, g1, g2,
                                                        graph_embeddings_dev, e1, e2, fusion_model)
+                    if config.fusion == "intraspan" or config.fusion == "interspan":
+                        # print(attn_weights[0].shape)
+                        all_b1.extend(attn_weights[0].tolist())
+                        all_a1.extend(attn_weights[1].tolist())
+                        all_b2.extend(attn_weights[2].tolist())
+                        all_a2.extend(attn_weights[3].tolist())
+                    
+                    
 
                     scores = pairwise_model(g1_final, g2_final)
+
                     
                     loss = criterion(scores.squeeze(
                         1), batch_labels.to(torch.float))
@@ -451,6 +460,7 @@ if __name__ == '__main__':
 
                     all_scores.extend(scores.squeeze(1))
                     all_labels.extend(batch_labels.to(torch.int))
+                    
                     torch.cuda.empty_cache()
 
         all_labels = torch.stack(all_labels)
@@ -464,10 +474,23 @@ if __name__ == '__main__':
               count_df['Length'].value_counts())
 
         if config.include_text:
+            if config.fusion == "intraspan" or config.fusion == "interspan":
+                df_attn = pd.DataFrame()
+                df_attn["b1"] = all_b1
+                df_attn["a1"] =  all_a1
+                df_attn["b2"] = all_b2
+                df_attn["a2"] = all_a2
+                df_attn["c1"] = all_pairs1
+                df_attn["c2"] = all_pairs2
+                df_attn["span1"] = all_s1
+                df_attn["span2"] = all_s2
+                df_attn.to_csv(f"{config.log_path}/attnention.csv")
+
             df_span = pd.DataFrame()
             df_span['combined_id'] = all_lookups
             df_span['spans'] = all_spans
             df_span['exps'] = all_span_expansions
+
             # df_span.drop_duplicates(subset='spans', keep="last")
 
             sents = '/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_dev.csv'
@@ -489,11 +512,14 @@ if __name__ == '__main__':
         print(compare)
         indices = (torch.where(compare == 0))
         print(len(all_labels), len(indices[0]))
+        # print(all_weights)
         wrong_predictions = pd.DataFrame()
         wrong_predictions["c1"] = [all_pairs1[k] for k in indices[0]]
         wrong_predictions["c2"] = [all_pairs2[k] for k in indices[0]]
         wrong_predictions["span1"] = [all_s1[k] for k in indices[0]]
         wrong_predictions["span2"] = [all_s2[k] for k in indices[0]]
+
+        
         if config.include_text:
             wrong_predictions["exp1"] = [all_k1[k] for k in indices[0]]
             wrong_predictions["exp2"] = [all_k2[k] for k in indices[0]]
