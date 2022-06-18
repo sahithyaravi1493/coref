@@ -252,6 +252,7 @@ def get_pairwise_labels(labels, is_training):
 
 if __name__ == '__main__':
     start = time.time()
+    best_f1 = 0
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str,
                         default='configs/config_pairwise.json')
@@ -356,21 +357,22 @@ if __name__ == '__main__':
         logger.info('Accumulate loss: {}'.format(accumulate_loss))
         wandb.log({'train loss': accumulate_loss})
         scheduler.step()
-
+        
         logger.info('Evaluate on the dev set')
-
         span_repr.eval()
         span_scorer.eval()
         pairwise_model.eval()
         fusion_model.eval()
         accumul_val_loss = 0
-
         all_scores, all_labels = [], []
         count = collections.defaultdict(set)
 
         # Additional lists for debugging later
+        # PER TOPIC SPANS, EXPANSIONS, KEYS
         all_spans, all_span_expansions = [], []
         all_lookups = []
+
+        # PAIRS
         all_pairs1, all_pairs2 = [], []
         all_s1, all_s2 = [], []
         all_k1, all_k2 = [], []
@@ -422,8 +424,8 @@ if __name__ == '__main__':
                 plot_this_batch(gr1, gr2, span1, span2, c1, c2, pairwise_labels.to(torch.float))
 
             with torch.no_grad():
-                for i in range(0, len(first), 1000):
-                    end_max = i + 1000
+                for i in range(0, len(first), 10000):
+                    end_max = i + 10000
                     first_idx, second_idx = first[i:end_max], second[i:end_max]
                     batch_labels = pairwise_labels[i:end_max]
                     g1 = span_repr(topic_spans.start_end_embeddings[first_idx],
@@ -529,11 +531,11 @@ if __name__ == '__main__':
         eval = Evaluation(strict_preds, all_labels.to(device))
 
         # Document wrong predictions of the best model
-        best_f1 = 0
+        
         cur_f1 = eval.get_f1()
-        best_f1 = max(cur_f1, best_f1)
-
+        
         if cur_f1 > best_f1:
+            best_f1 = cur_f1
             compare = (strict_preds == all_labels.to(device))
             # print(compare)
             indices = (torch.where(compare == 0))

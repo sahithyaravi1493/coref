@@ -132,7 +132,7 @@ class SimplePairWiseClassifier(nn.Module):
 
 class SimpleFusionLayer(nn.Module):
     def __init__(self, config):
-        self.num_heads = 1
+        self.num_heads = 2
         self.embed_dim = 3092
         super(SimpleFusionLayer, self).__init__()
         self.input_layer = config.bert_hidden_size * 3 if config.with_head_attention else config.bert_hidden_size * 2
@@ -149,7 +149,7 @@ class SimpleFusionLayer(nn.Module):
                 nn.ReLU(),
             )
         else:
-            self.fusion = nn.MultiheadAttention(self.embed_dim, self.num_heads, batch_first=False)
+            self.fusion = nn.MultiheadAttention(self.embed_dim, self.num_heads, batch_first=False, dropout=0.1)
         self.fusion.apply(init_weights)
 
     def forward(self, first, second, config):
@@ -162,6 +162,10 @@ class SimpleFusionLayer(nn.Module):
             key = second.reshape(int(second.shape[1]/self.embed_dim),second.shape[0], -1)
             value = second.reshape(int(second.shape[1]/self.embed_dim),second.shape[0],-1)
             attn_output, attn_output_weights = self.fusion(query, key, value)
-            attn_weights = attn_output_weights.cpu().detach().numpy().reshape(first.shape[0], -1)
-            return attn_output.squeeze(0).reshape(first.shape[0], -1), np.around(attn_weights, 3)
+            attn_weights = attn_output_weights.reshape(first.shape[0], -1)
+            attn_weights = attn_weights.cpu().detach().numpy()
+            # print("before round", attn_weights)
+            attn_weights = np.around(attn_weights, 4)
+            # print("after round", attn_weights)
+            return attn_output.squeeze(0).reshape(first.shape[0], -1), attn_weights
 
