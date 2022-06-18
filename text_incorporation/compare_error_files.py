@@ -66,7 +66,7 @@ if __name__ == '__main__':
         expansions1 = (spans[(spans["combined_id"] == row["c1"]) & (spans["spans"] == row["span1"])]["exps"].values[0]).split(".")
         expansions2 = (spans[(spans["combined_id"] == row["c2"]) & (spans["spans"] == row["span2"])]["exps"].values[0]).split(".")
         expansions1 = expansions1 + ["NONE"]*(5-len(expansions1))
-        expansions1 = expansions2 + ["NONE"]*(5-len(expansions2))
+        expansions2 = expansions2 + ["NONE"]*(5-len(expansions2))
 
         b1 = ast.literal_eval(attn[(attn["c1"] == row["c1"]) & (attn["span1"] == row["span1"]) & (attn["c2"] == row["c2"]) & (attn["span2"] == row["span2"])]["b1"].values[0])
         a1 = ast.literal_eval(attn[(attn["c1"] == row["c1"]) & (attn["span1"] == row["span1"]) & (attn["c2"] == row["c2"]) & (attn["span2"] == row["span2"])]["a1"].values[0])

@@ -19,7 +19,7 @@
   "segment": true,
   "random_seed": 0,
   "epochs": 20,
-  "batch_size": 512,
+  "batch_size": 256,
   "learning_rate": 1e-4,
   "weight_decay": 0,
   "pos_class_weight":1,
@@ -33,7 +33,7 @@
 
   "include_graph": false,
   "knowledge_embedding_dimension": 200,
-  "relations_per_sentence": 2,
+  "relations_per_sentence": 12,
   "embedding_type": "rgcn",
   "stored_embeddings_path": "comet/rgcn_hidden",
 
@@ -43,15 +43,15 @@
   "n_inferences":10,
   "expansion_dimension":3092,
   "attention_based": true,
-  "fusion": "interspan",
+  "fusion": "interspan_full",
   "inferences_path": "gpt3/output",
   "text_embeddings_path": "gpt3/gpt3_ind",
   "plot_cosine": false,
 
 
-  "log_path": "logs/pairwise_interspan_2h/",
+  "log_path": "logs/pairwise_interspan_full/",
   "data_folder": "data/ecb/mentions",
   "span_repr_path": "models/span_scorers/events_span_repr_0",
   "span_scorer_path": "models/span_scorers/events_span_scorer_0",
-  "model_path": "models/pairwise_interspan_2h/"
+  "model_path": "models/pairwise_interspan_full/"
 }

@@ -424,8 +424,8 @@ if __name__ == '__main__':
                 plot_this_batch(gr1, gr2, span1, span2, c1, c2, pairwise_labels.to(torch.float))
 
             with torch.no_grad():
-                for i in range(0, len(first), 10000):
-                    end_max = i + 10000
+                for i in range(0, len(first), 1000):
+                    end_max = i + 1000
                     first_idx, second_idx = first[i:end_max], second[i:end_max]
                     batch_labels = pairwise_labels[i:end_max]
                     g1 = span_repr(topic_spans.start_end_embeddings[first_idx],
@@ -578,10 +578,11 @@ if __name__ == '__main__':
         wandb.log({"val loss": accumul_val_loss})
         wandb.log({"f1": eval.get_f1()})
         end = time.time()
-        logger.info('Time taken: {}'.format(end-start))
+        
         torch.save(span_repr.state_dict(), os.path.join(
             config['model_path'], 'span_repr_{}'.format(epoch)))
         torch.save(span_scorer.state_dict(), os.path.join(
             config['model_path'], 'span_scorer_{}'.format(epoch)))
         torch.save(pairwise_model.state_dict(), os.path.join(
             config['model_path'], 'pairwise_scorer_{}'.format(epoch)))
+    logger.info('Time taken: {}'.format(end-start))
