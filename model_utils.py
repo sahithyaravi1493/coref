@@ -8,7 +8,7 @@ def pad_and_read_bert(bert_token_ids, bert_model, max_length=None):
     length = np.array([len(d) for d in bert_token_ids])
     if max_length is None:
         max_length = max(length)
-
+    # print(length, max_length)
     if max_length > 512:
         raise ValueError('Error! Segment too long!')
 

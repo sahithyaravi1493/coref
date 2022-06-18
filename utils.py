@@ -463,7 +463,7 @@ def get_span_specific_embeddings(topic_spans, span_repr, all_expansions, all_exp
             final_expansions = expansions[indices.cpu().detach().numpy()]
             csk_start_ends.append(final_selection)
             fine_grained_expansions.append(final_expansions)
-    print("WE MISSED", misses)
+    # print("WE MISSED", misses)
     # print(type(csk_continuous[0]), type(csk_widths[0]))
     return csk_start_ends, csk_continuous, csk_widths, fine_grained_expansions
 

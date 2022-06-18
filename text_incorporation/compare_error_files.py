@@ -1,4 +1,6 @@
 import pandas as pd
+from expansion_embeddings import text_processing
+
 pd.set_option('max_colwidth', 1000)
 # SPANS
 spans = pd.read_csv("/ubc/cs/research/nlp/sahiravi/coref/logs/pairwise_interspan/span_examples_ns.csv")
@@ -35,10 +37,17 @@ for index, row in  baseline_fails.iterrows():
     print(f'{row["actual_labels"]}')
     print(f'{row["sent1"]} ###### {row["span1"]}\n')
     print(f'{row["sent2"]} ###### {row["span2"]}\n')
-   
-    print(spans[(spans["combined_id"] == row["c1"]) & (spans["spans"] == row["span1"])]["exps"].values[0], "\n")
-    print(spans[(spans["combined_id"] == row["c2"]) & (spans["spans"] == row["span2"])]["exps"].values[0], "\n")
-    print(attn[(attn["c1"] == row["c1"]) & (attn["span1"] == row["span1"])]["b1"].head(1), "\n")
-    print(attn[(attn["c1"] == row["c2"]) & (attn["span2"] == row["span2"])]["b2"].head(1), "\n")
+    expansions1 = text_processing(spans[(spans["combined_id"] == row["c1"]) & (spans["spans"] == row["span1"])]["exps"].values[0]).split(".")
+    expansions2 = text_processing(spans[(spans["combined_id"] == row["c2"]) & (spans["spans"] == row["span2"])]["exps"].values[0]).split(".")
+    expansions1 = expansions1 + ["NONE"]*(5-len(expansions1))
+    expansions1 = expansions2 + ["NONE"]*(5-len(expansions2))
+    print(expansions1)
+    print(b1 + a1)
+    b1 = attn[(attn["c1"] == row["c1"]) & (attn["span1"] == row["span1"])]["b1"].head(1)
+    a1 = attn[(attn["c1"] == row["c1"]) & (attn["span1"] == row["span1"])]["a1"].head(1)
+    b2 = attn[(attn["c1"] == row["c2"]) & (attn["span2"] == row["span2"])]["b2"].head(1)
+    a2 = attn[(attn["c1"] == row["c2"]) & (attn["span2"] == row["span2"])]["a2"].head(1)
+    print(expansions2, "\n")
+    print(b2+a2, "\n")
     print("#############################\n")
 print(n, baseline_fails.shape[0]-n)

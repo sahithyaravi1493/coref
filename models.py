@@ -1,8 +1,7 @@
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
-
-
+import numpy as np
 
 def init_weights(m):
     if isinstance(m, nn.Linear):
@@ -163,6 +162,6 @@ class SimpleFusionLayer(nn.Module):
             key = second.reshape(int(second.shape[1]/self.embed_dim),second.shape[0], -1)
             value = second.reshape(int(second.shape[1]/self.embed_dim),second.shape[0],-1)
             attn_output, attn_output_weights = self.fusion(query, key, value)
-   
-            return attn_output.squeeze(0).reshape(first.shape[0], -1),attn_output_weights.cpu().detach().numpy().reshape(first.shape[0], -1)
+            attn_weights = attn_output_weights.cpu().detach().numpy().reshape(first.shape[0], -1)
+            return attn_output.squeeze(0).reshape(first.shape[0], -1), np.around(attn_weights, 3)
 

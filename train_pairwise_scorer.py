@@ -14,6 +14,8 @@ from models import SimpleFusionLayer
 from models import SpanEmbedder, SpanScorer, SimplePairWiseClassifier
 from spans import TopicSpans
 from utils import *
+from tqdm import tqdm 
+import time
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 gc.collect()
@@ -249,6 +251,7 @@ def get_pairwise_labels(labels, is_training):
 
 
 if __name__ == '__main__':
+    start = time.time()
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str,
                         default='configs/config_pairwise.json')
@@ -310,7 +313,7 @@ if __name__ == '__main__':
         models.append(span_scorer)
 
     optimizer = get_optimizer(config, models)
-    scheduler = StepLR(optimizer, step_size=4, gamma=0.1)
+    scheduler = StepLR(optimizer, step_size=10, gamma=0.1)
     criterion = get_loss_function(config)
 
     logger.info('Number of parameters of mention extractor: {}'.format(
@@ -525,40 +528,45 @@ if __name__ == '__main__':
                                                              len(all_labels)))
         eval = Evaluation(strict_preds, all_labels.to(device))
 
-        # Document wrong predictions
-        compare = (strict_preds == all_labels.to(device))
-        print(compare)
-        indices = (torch.where(compare == 0))
-        print(len(all_labels), len(indices[0]))
-        # print(all_weights)
-        wrong_predictions = pd.DataFrame()
-        wrong_predictions["c1"] = [all_pairs1[k] for k in indices[0]]
-        wrong_predictions["c2"] = [all_pairs2[k] for k in indices[0]]
-        wrong_predictions["span1"] = [all_s1[k] for k in indices[0]]
-        wrong_predictions["span2"] = [all_s2[k] for k in indices[0]]
+        # Document wrong predictions of the best model
+        best_f1 = 0
+        cur_f1 = eval.get_f1()
+        best_f1 = max(cur_f1, best_f1)
 
-        if config.include_text:
-            wrong_predictions["exp1"] = [all_k1[k] for k in indices[0]]
-            wrong_predictions["exp2"] = [all_k2[k] for k in indices[0]]
+        if cur_f1 > best_f1:
+            compare = (strict_preds == all_labels.to(device))
+            # print(compare)
+            indices = (torch.where(compare == 0))
+            # print(len(all_labels), len(indices[0]))
+            # print(all_weights)
+            wrong_predictions = pd.DataFrame()
+            wrong_predictions["c1"] = [all_pairs1[k] for k in indices[0]]
+            wrong_predictions["c2"] = [all_pairs2[k] for k in indices[0]]
+            wrong_predictions["span1"] = [all_s1[k] for k in indices[0]]
+            wrong_predictions["span2"] = [all_s2[k] for k in indices[0]]
 
-        sents = '/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_dev.csv'
-        if os.path.exists(sents):
-            df_sents = pd.read_csv(sents)
-            sent1 = []
-            sent2 = []
-            span_exp1 = []
-            span_exp2 = []
-            for idx, row in wrong_predictions.iterrows():
-                sent = df_sents[df_sents["combined_id"] == row["c1"]]
-                sent1.append(sent["sentence"].values[0])
-                sent = df_sents[df_sents["combined_id"] == row["c2"]]
-                sent2.append(sent["sentence"].values[0])
+            if config.include_text:
+                wrong_predictions["exp1"] = [all_k1[k] for k in indices[0]]
+                wrong_predictions["exp2"] = [all_k2[k] for k in indices[0]]
 
-            wrong_predictions["sent1"] = sent1
-            wrong_predictions["sent2"] = sent2
-            wrong_predictions["actual_labels"] = [all_labels[k] for k in indices[0]]
+            sents = '/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_dev.csv'
+            if os.path.exists(sents):
+                df_sents = pd.read_csv(sents)
+                sent1 = []
+                sent2 = []
+                span_exp1 = []
+                span_exp2 = []
+                for idx, row in wrong_predictions.iterrows():
+                    sent = df_sents[df_sents["combined_id"] == row["c1"]]
+                    sent1.append(sent["sentence"].values[0])
+                    sent = df_sents[df_sents["combined_id"] == row["c2"]]
+                    sent2.append(sent["sentence"].values[0])
 
-        wrong_predictions.to_csv(f"{config.log_path}/errors.csv")
+                wrong_predictions["sent1"] = sent1
+                wrong_predictions["sent2"] = sent2
+                wrong_predictions["actual_labels"] = [all_labels[k] for k in indices[0]]
+
+            wrong_predictions.to_csv(f"{config.log_path}/errors.csv")
 
         #########
 
@@ -567,7 +575,8 @@ if __name__ == '__main__':
         f1.append(eval.get_f1())
         wandb.log({"val loss": accumul_val_loss})
         wandb.log({"f1": eval.get_f1()})
-
+        end = time.time()
+        logger.info('Time taken: {}'.format(end-start))
         torch.save(span_repr.state_dict(), os.path.join(
             config['model_path'], 'span_repr_{}'.format(epoch)))
         torch.save(span_scorer.state_dict(), os.path.join(

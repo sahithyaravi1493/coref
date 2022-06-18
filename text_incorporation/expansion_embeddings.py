@@ -14,7 +14,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 config = pyhocon.ConfigFactory.parse_file('configs/config_pairwise.json')
 # Choose whether to embed GPT3 or COMET
 commonsense_model = 'gpt3'
-embedding_mode = "condensed"  # "separate
+embedding_mode = "condensed"  # "ind"
 
 
 def comet_to_roberta_embeddings(bert_tokenizer, bert_model, comet_inferences_root="comet"):
@@ -46,7 +46,7 @@ def comet_to_roberta_embeddings(bert_tokenizer, bert_model, comet_inferences_roo
         save_pkl_dump(f"comet/{split}_e_widths", widths)
 
 
-def gpt3_roberta_condensed_embeddings(bert_tokenizer, bert_model, gpt3_inferences_root="gpt3", embedding_mode="condensed"):
+def gpt3_roberta_condensed_embeddings(bert_tokenizer, bert_model, gpt3_inferences_root="gpt3", embedding_mode="ind"):
     """
 
     @param bert_tokenizer:
@@ -73,10 +73,14 @@ def gpt3_roberta_condensed_embeddings(bert_tokenizer, bert_model, gpt3_inference
             for i in range(len(inferences)):
                 inferences[i] = text_processing(inferences[i])
 
-            before_array = sorted([inf.lstrip()+"." for inf in inferences[0].split(".") if len(inf.split()) > 3][:5],
-                                  reverse=False)
-            after_array = sorted([inf.lstrip()+"." for inf in inferences[1].split(".") if len(inf.split()) > 3][:5],
-                                 reverse=False)
+            before_array = [inf.lstrip()+"." for inf in inferences[0].split(".") if len(inf.split()) > 3] 
+            after_array = [inf.lstrip()+"." for inf in inferences[1].split(".") if len(inf.split()) > 3]
+            if not before_array:
+                before_array = ["."]
+            if not after_array:
+                after_array = ["."]
+            before_array = sorted(before_array[:5], reverse=False)
+            after_array = sorted(after_array[:5], reverse=False)
 
             before_condensed = " ".join(before_array).lstrip(". ") + "."
             after_condensed = " ".join(after_array).lstrip(". ") + "."
@@ -91,8 +95,9 @@ def gpt3_roberta_condensed_embeddings(bert_tokenizer, bert_model, gpt3_inference
             else:
                 before_token_ids = [bert_tokenizer.encode(inf) for inf in before_array]
                 after_token_ids = [bert_tokenizer.encode(inf) for inf in after_array]
-                before_embeddings, before_lengths = pad_and_read_bert(before_token_ids, bert_model)
-                after_embeddings, after_lengths = pad_and_read_bert(after_token_ids, bert_model)
+                max_len = max([len(d) for d in (before_token_ids + after_token_ids)])
+                before_embeddings, before_lengths = pad_and_read_bert(before_token_ids, bert_model, max_len)
+                after_embeddings, after_lengths = pad_and_read_bert(after_token_ids, bert_model, max_len)
                 before_embeddings = F.pad(before_embeddings, pad=(0, 0, 0, 0, 0, 5 - before_embeddings.shape[0]))
                 before_lengths = np.pad(before_lengths, (0, 5 - before_lengths.shape[0]), 'constant', constant_values=(0))
                 after_embeddings = F.pad(after_embeddings, pad=(0, 0, 0, 0, 0, 5 - after_embeddings.shape[0]))
@@ -112,9 +117,9 @@ def gpt3_roberta_condensed_embeddings(bert_tokenizer, bert_model, gpt3_inference
 
         hkl.dump(start_end_embeddings, f"gpt3/{split}_e_startend_ns.hkl", mode='w')
         hkl.dump(widths, f"gpt3/{split}_e_widths_ns.hkl", mode='w')
-        save_pkl_dump(f"gpt3/{split}_e_startend_ns", start_end_embeddings)
-        save_pkl_dump(f"gpt3/{split}_e_widths_ns", widths)
-        save_pkl_dump(f"gpt3/{split}_e_cont_ns", continuous_embeddings)
+        save_pkl_dump(f"gpt3/gpt3_{embedding_mode}_{split}_startend", start_end_embeddings)
+        save_pkl_dump(f"gpt3/gpt3_{embedding_mode}_{split}_widths", widths)
+        save_pkl_dump(f"gpt3/gpt3_{embedding_mode}_{split}_cont", continuous_embeddings)
         print(f"Done {split}")
 
 
@@ -228,9 +233,9 @@ if __name__ == '__main__':
     if commonsense_model == "comet":
         comet_to_roberta_embeddings(bert_tokenizer, bert_model)
     elif commonsense_model == "gpt3":
-        if embedding_mode == "condensed":
-            gpt3_roberta_condensed_embeddings(bert_tokenizer, bert_model)
-        else:
-            gpt3_roberta_separate_embeddings(bert_tokenizer, bert_model)
+        # if embedding_mode == "condensed":
+        gpt3_roberta_condensed_embeddings(bert_tokenizer, bert_model)
+        # else:
+        #     gpt3_roberta_separate_embeddings(bert_tokenizer, bert_model)
     else:
         raise ValueError("commonsense_model should be one of comet or gpt3")
