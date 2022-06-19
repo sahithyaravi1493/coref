@@ -244,7 +244,15 @@ def batch_saved_embeddings(batch_ids, config, embedding):
     return np.array(batch_embeddings).reshape(len(batch_embeddings), -1)
 
 
-def plot_this_batch(g1, g2, span1, span2, c1, c2, batch_labels):
+def plot_this_batch(g1, g2,batch_labels, topic_spans, graph_embeddings_dev, first, second):
+    # Plot    
+    c1 = [topic_spans.combined_ids[k] for k in first]
+    c2 = [topic_spans.combined_ids[k] for k in second]
+    exp1 = torch.stack([topic_spans.knowledge_start_end_embeddings[k] for k in first]).to(span1.device)
+    exp2 = torch.stack([topic_spans.knowledge_start_end_embeddings[k] for k in second]).to(span1.device)
+    g1, g2, _ = final_vectors(c1, c2, config, topic_spans.start_end_embeddings[first],
+                                topic_spans.start_end_embeddings[second],
+                                graph_embeddings_dev, exp1, exp2)
     # Plot cosine similarity of embeddings g1 and g2
     cos = nn.CosineSimilarity(dim=1, eps=1e-8)
     cosine_similarities = cos(g1, g2).cpu().detach().numpy()
@@ -343,6 +351,13 @@ def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embed
             after1, after1_weights = fusion_model(torch.cat((span2, after2_init), axis=1), after1_init, config)
             before2, before2_weights = fusion_model(torch.cat((span1, before1_init), axis=1), before2_init, config)
             after2, after2_weights = fusion_model(torch.cat((span1, after1_init), axis=1), after2_init, config)
+            e1_new = torch.cat((before1, after1), axis=1)
+            e2_new = torch.cat((before2, after2), axis=1)
+        elif config.fusion == "inter_intra":
+            before1, before1_weights = fusion_model(span1, both1_init, config)
+            after1, after1_weights = fusion_model(span2, both1_init, config)
+            before2, before2_weights = fusion_model(span1, both2_init, config)
+            after2, after2_weights = fusion_model(span2, both2_init, config)
             e1_new = torch.cat((before1, after1), axis=1)
             e2_new = torch.cat((before2, after2), axis=1)
         else:
@@ -531,3 +546,100 @@ def get_expansion_with_attention(span_repr, knowledge_embs, batch_first, batch_s
 
     # print("Roberta embedded inference embeddings E1, E2", e1.shape, e2.shape)
     return e1, e2
+
+
+def save_span_expansions(config, all_expansions, all_spans, all_lookups):
+    if config.include_text:
+        df_span = pd.DataFrame()
+        df_span['combined_id'] = all_lookups
+        df_span['spans'] = all_spans
+        df_span['exps'] = all_expansions
+
+        # df_span.drop_duplicates(subset='spans', keep="last")
+
+        sents = '/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_dev.csv'
+        if os.path.exists(sents):
+            df_sents = pd.read_csv(sents)
+            df_span = df_span.merge(df_sents, on='combined_id')
+        df_span.to_csv(f"{config.log_path}/span_examples_ns.csv")
+
+    
+def save_attention_weights(config, all_a1, all_a2, all_b1, all_b2, all_pairs1, all_pairs2, all_s1, all_s2):
+    if config.include_text:
+        if config.fusion == "intraspan" or config.fusion == "interspan":
+            df_attn = pd.DataFrame()
+            df_attn["b1"] = all_b1
+            df_attn["a1"] = all_a1
+            df_attn["b2"] = all_b2
+            df_attn["a2"] = all_a2
+            df_attn["c1"] = all_pairs1
+            df_attn["c2"] = all_pairs2
+            df_attn["span1"] = all_s1
+            df_attn["span2"] = all_s2
+            df_attn.to_csv(f"{config.log_path}/attnention.csv")
+
+        
+def save_error_examples(config, strict_preds, all_labels, all_s1, all_s2, all_pairs1, all_pairs2, all_k1=None, all_k2=None):
+    compare = (strict_preds.cpu().detach().numpy() == all_labels.cpu().detach().numpy())
+    # print(compare)
+    indices = (np.where(compare == 0))
+    # print(len(all_labels), len(indices[0]))
+    # print(all_weights)
+    wrong_predictions = pd.DataFrame()
+    wrong_predictions["c1"] = [all_pairs1[k] for k in indices[0]]
+    wrong_predictions["c2"] = [all_pairs2[k] for k in indices[0]]
+    wrong_predictions["span1"] = [all_s1[k] for k in indices[0]]
+    wrong_predictions["span2"] = [all_s2[k] for k in indices[0]]
+
+    if config.include_text:
+        wrong_predictions["exp1"] = [all_k1[k] for k in indices[0]]
+        wrong_predictions["exp2"] = [all_k2[k] for k in indices[0]]
+
+    sents = '/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_dev.csv'
+    if os.path.exists(sents):
+        df_sents = pd.read_csv(sents)
+        sent1 = []
+        sent2 = []
+        span_exp1 = []
+        span_exp2 = []
+        for idx, row in wrong_predictions.iterrows():
+            sent = df_sents[df_sents["combined_id"] == row["c1"]]
+            sent1.append(sent["sentence"].values[0])
+            sent = df_sents[df_sents["combined_id"] == row["c2"]]
+            sent2.append(sent["sentence"].values[0])
+
+        wrong_predictions["sent1"] = sent1
+        wrong_predictions["sent2"] = sent2
+        wrong_predictions["actual_labels"] = [all_labels[k] for k in indices[0]]
+
+    wrong_predictions.to_csv(f"{config.log_path}/errors.csv")
+
+
+def print_value_counts():
+    count_df = pd.DataFrame({'pairs': count.keys(), 'label_set': count.values()})
+    count_df['Length'] = count_df['label_set'].str.len()
+
+    print("In validation set, # of labels per pair",
+            count_df['Length'].value_counts())
+        
+
+def assign_sizes(config):
+    # if config.attention_based:
+    #     config.embedding_dimension = 3092
+    # else:
+    #     config.embedding_dimension = 2048
+
+    if config.fusion == "intraspan":
+        # Intra-span - key =inferences for span1, query= span1
+        # print("Attention inputs", span1.shape, both1_init.shape)
+        config.n_inferences = 2*5
+        # print("Attention output", g1_new.shape, g2_new.shape)
+    elif config.fusion == "interspan":
+        # Inter-span - key =inferences for span1, query= span2
+        config.n_inferences = 2*5
+    elif config.fusion == "interspan_full":
+        # Inter-span-full = key =inferences for span1, query= (span2 and inferences for span2)
+        config.n_inferences = 2*5
+    else:
+        config.n_inferences = 2
+    return config

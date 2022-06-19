@@ -2,7 +2,7 @@ import pandas as pd
 from expansion_embeddings import text_processing
 import numpy as np
 import ast
-
+import torch
 pd.set_option('display.expand_frame_repr', False)
 np.set_printoptions(precision=2)
 
@@ -54,9 +54,9 @@ if __name__ == '__main__':
     print("# errors rectified by new version:", baseline_fails.shape[0])
     p = 0
     n = 0
-    for index, row in  baseline_fails.iterrows():
-        if row["actual_labels"] == 0:
-            n += 1
+    for index, row in concat_fails.iterrows():
+        if row["actual_labels"] == "tensor(1, device='cuda:0', dtype=torch.int32)":
+            p += 1
 
         print("######################### EXAMPLE ##################")
         print(f'{row["actual_labels"]}')
@@ -90,4 +90,4 @@ if __name__ == '__main__':
         print("#############################\n")
 
 
-    print("# of positive error corrections", baseline_fails.shape[0]-n)
+    print("# of positive error corrections", p)
