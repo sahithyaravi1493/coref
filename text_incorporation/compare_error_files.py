@@ -1,13 +1,24 @@
 import pandas as pd
-from expansion_embeddings import text_processing
 import numpy as np
 import ast
 import torch
+from expansion_embeddings import text_processing
 pd.set_option('display.expand_frame_repr', False)
 np.set_printoptions(precision=2)
 
+N_INFERENCES = 10
 base = 'pairwise_baseline'
-new_version = 'pairwise_interspan_2h'
+new_version = 'pairwise_interspan1'
+
+def process(all_expansions):
+    inferences = all_expansions.split("After:")
+    for i in range(len(inferences)):
+        inferences[i] = text_processing(inferences[i])
+    before_array = [inf.lstrip()+"." for inf in inferences[0].split(".") if len(inf.split()) > 3][:5]
+    before_array = before_array + ["NONE"]*(int(N_INFERENCES/2)-len(before_array))
+    after_array = [inf.lstrip()+"." for inf in inferences[1].split(".") if len(inf.split()) > 3][:5]
+    after_array = after_array + ["NONE"]*(int(N_INFERENCES/2)-len(after_array))
+    return before_array + after_array
 
 
 if __name__ == '__main__':
@@ -23,7 +34,7 @@ if __name__ == '__main__':
 
     # new version
     errors2 = pd.read_csv(f'/ubc/cs/research/nlp/sahiravi/coref/logs/{new_version}/errors.csv')
-    print("# of errors in newversion:", errors2.shape[0])
+    print(f"# of errors in {new_version}:", errors2.shape[0])
     # print(errors2.columns)
 
     # what is common with baseline
@@ -63,10 +74,10 @@ if __name__ == '__main__':
         print(f'{row["sent1"]} \n  {row["span1"]}\n')
         print(f'{row["sent2"]} \n {row["span2"]}\n')
 
-        expansions1 = (spans[(spans["combined_id"] == row["c1"]) & (spans["spans"] == row["span1"])]["exps"].values[0]).split(".")
-        expansions2 = (spans[(spans["combined_id"] == row["c2"]) & (spans["spans"] == row["span2"])]["exps"].values[0]).split(".")
-        expansions1 = expansions1 + ["NONE"]*(5-len(expansions1))
-        expansions2 = expansions2 + ["NONE"]*(5-len(expansions2))
+        expansions1 = (spans[(spans["combined_id"] == row["c1"]) & (spans["spans"] == row["span1"])]["exps"].values[0])
+        expansions2 = (spans[(spans["combined_id"] == row["c2"]) & (spans["spans"] == row["span2"])]["exps"].values[0])
+        expansions1 = process(expansions1)
+        expansions2 = process(expansions2)
 
         b1 = ast.literal_eval(attn[(attn["c1"] == row["c1"]) & (attn["span1"] == row["span1"]) & (attn["c2"] == row["c2"]) & (attn["span2"] == row["span2"])]["b1"].values[0])
         a1 = ast.literal_eval(attn[(attn["c1"] == row["c1"]) & (attn["span1"] == row["span1"]) & (attn["c2"] == row["c2"]) & (attn["span2"] == row["span2"])]["a1"].values[0])

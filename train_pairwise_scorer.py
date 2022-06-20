@@ -17,19 +17,17 @@ from utils import *
 from tqdm import tqdm 
 import time
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-gc.collect()
-torch.cuda.empty_cache()
-
 os.environ["WANDB_SILENT"] = "true"
 wandb.login(key='')
 wandb.init(
     project="coref-pairwise",
-    notes="add rgcn",
+    # notes="baselin",
 
 )
 
-
+# os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+gc.collect()
+torch.cuda.empty_cache()
 def combine_ids(dids, sids):
     """
     combine documentid , sentenceid into documentid_sentenceid
@@ -251,26 +249,36 @@ def get_pairwise_labels(labels, is_training):
 
 
 if __name__ == '__main__':
+    # Time one whole run
     start = time.time()
-    best_f1 = 0
+
+    # Config parameters
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str,
                         default='configs/config_pairwise.json')
     args = parser.parse_args()
     config = pyhocon.ConfigFactory.parse_file(args.config)
     fix_seed(config)
+
+    # Logging
     logger = create_logger(config, create_file=True)
     logger.info(pyhocon.HOCONConverter.convert(config, "hocon"))
     create_folder(config['model_path'])
-    wandb.run.name = f'{config["log_path"].replace("logs/", "")}'
-    device = torch.device('cuda') if torch.cuda.is_available() else 'cpu'
 
-    logger.info('Using device {}'.format(device))
+    # Weights and biases
+    wandb.run.name = f'{config["log_path"].replace("logs/", "")}'
+
+    # GPU number
+
+    device = torch.device('cuda') if torch.cuda.is_available() else 'cpu'
+    # logger.info('Using device {}'.format(str(config["gpu_num"])))
+
     # init train and dev set
     bert_tokenizer = AutoTokenizer.from_pretrained(config['bert_model'])
     training_set = create_corpus(config, bert_tokenizer, 'train')
     dev_set = create_corpus(config, bert_tokenizer, 'dev')
 
+    # Additional embeddings for commonsense
     graph_embeddings_train, graph_embeddings_dev = None, None
     expansions_train, expansions_val = None, None
     expansion_embeddings_train, expansion_embeddings_val = None, None
@@ -284,7 +292,7 @@ if __name__ == '__main__':
         # Text embeddings for commonsense
         expansions_train, expansion_embeddings_train = load_text_embeddings(config, split='train')
         expansions_val, expansion_embeddings_val = load_text_embeddings(config, split='dev')
-        # config = assign_sizes(config)
+        #config = assign_sizes(config)
 
     # Model initiation
     logger.info('Init models')
@@ -325,6 +333,7 @@ if __name__ == '__main__':
     logger.info('Number of topics: {}'.format(len(training_set.topic_list)))
 
     f1 = []
+    best_f1 = 0
     for epoch in range(config['epochs']):
         logger.info('Epoch: {}'.format(epoch))
         pairwise_model.train()
@@ -429,7 +438,7 @@ if __name__ == '__main__':
                         scores += g1_score + g2_score
 
                     ############DEBUG#######
-                    if config.fusion == "intraspan" or config.fusion == "interspan":
+                    if config.include_text and config.fusion != "concat":
                         # print(attn_weights[0].shape)
                         all_b1.extend(attn_weights[0].tolist())
                         all_a1.extend(attn_weights[1].tolist())
@@ -501,3 +510,4 @@ if __name__ == '__main__':
 
     end = time.time()
     logger.info('Time taken: {}'.format(end-start))
+    logger.info('Best F1:{}'.format(round(best_f1,4)))

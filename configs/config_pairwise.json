@@ -1,10 +1,9 @@
 {
-  "gpu_num" : [1],
   "bert_tokenizer": "roberta-large",
   "bert_model": "roberta-large",
   "bert_hidden_size": 1024,
   "hidden_layer": 1024,
-  "dropout": 0.1,
+  "dropout": 0.3,
   "with_mention_width": true,
   "with_head_attention": true,
   "embedding_dimension": 20,
@@ -17,19 +16,19 @@
   "subtopic": true,
   "use_predicted_topics": false,
   "segment": true,
-  "random_seed": 0,
-  "epochs": 20,
+
+  "random_seed": 42,
+  "epochs": 10,
   "batch_size": 512,
   "learning_rate": 1e-4,
   "weight_decay": 0,
   "pos_class_weight":1,
   "loss": "bce",
-  "optimizer": "adamw",
+  "optimizer": "adam",
   "adam_epsilon": 1e-8,
   "segment_window": 512,
   "neg_samp": true,
   "exact": false,
-
 
   "include_graph": false,
   "knowledge_embedding_dimension": 200,
@@ -39,20 +38,20 @@
 
   "exclude_span_repr": false,
   
-  "include_text": false,
+  "include_text": true,
   "mode": "gpt3",
   "attention_based": true,
-  "fusion": "concat",
+  "fusion": "inter_intra",
   "inferences_path": "gpt3/output",
   "text_embeddings_path": "gpt3/gpt3_ind",
-  "plot_cosine": false,
-  "n_inferences":10,
+  "reduce_attention_output":false,
+  "n_inferences":6,
   "expansion_dimension":3092,
+  "plot_cosine": false,
 
-
-  "log_path": "logs/pairwise_baseline_0.1/",
+  "log_path": "logs/pairwise_interintra6_1/",
   "data_folder": "data/ecb/mentions",
   "span_repr_path": "models/span_scorers/events_span_repr_0",
   "span_scorer_path": "models/span_scorers/events_span_scorer_0",
-  "model_path": "models/pairwise_baseline_0.1/"
+  "model_path": "models/pairwise_interintra6_1/"
 }

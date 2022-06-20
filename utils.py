@@ -566,7 +566,7 @@ def save_span_expansions(config, all_expansions, all_spans, all_lookups):
     
 def save_attention_weights(config, all_a1, all_a2, all_b1, all_b2, all_pairs1, all_pairs2, all_s1, all_s2):
     if config.include_text:
-        if config.fusion == "intraspan" or config.fusion == "interspan":
+        if config.fusion != "concat":
             df_attn = pd.DataFrame()
             df_attn["b1"] = all_b1
             df_attn["a1"] = all_a1
@@ -624,22 +624,16 @@ def print_value_counts():
         
 
 def assign_sizes(config):
-    # if config.attention_based:
-    #     config.embedding_dimension = 3092
-    # else:
-    #     config.embedding_dimension = 2048
-
-    if config.fusion == "intraspan":
-        # Intra-span - key =inferences for span1, query= span1
-        # print("Attention inputs", span1.shape, both1_init.shape)
-        config.n_inferences = 2*5
-        # print("Attention output", g1_new.shape, g2_new.shape)
-    elif config.fusion == "interspan":
-        # Inter-span - key =inferences for span1, query= span2
-        config.n_inferences = 2*5
-    elif config.fusion == "interspan_full":
-        # Inter-span-full = key =inferences for span1, query= (span2 and inferences for span2)
-        config.n_inferences = 2*5
+    if config.attention_based:
+        config.embedding_dimension = 3092
+        if config.reduce_attention_output:
+            # reduced dimensions
+            config.embedding_dimension = 1024
     else:
+        config.embedding_dimension = 2048
+
+    if config.fusion == "concat":
         config.n_inferences = 2
+    # else:
+    #     config.n_inferences = 10
     return config

@@ -111,7 +111,7 @@ class SimplePairWiseClassifier(nn.Module):
                 self.input_layer = 0
             # configure the # of expansions uding n_inferences and embedding dimension = 2048(start-end)/3092(attention)
             self.input_layer += config.expansion_dimension * (config.relations_per_sentence)
-
+        print("INPUT of pairwise classifier", self.input_layer)
         self.input_layer *= 3
         self.hidden_layer = config.hidden_layer
         self.pairwise_mlp = nn.Sequential(
@@ -141,6 +141,7 @@ class SimpleFusionLayer(nn.Module):
             self.input_layer += config.embedding_dimension
 
         self.final_layer = self.input_layer
+        self.dim_layer = nn.Linear(self.embed_dim, 1024)
         if config.fusion == "inter_intra":
             fusion_input = int(config.n_inferences)+1
         else:
@@ -153,8 +154,8 @@ class SimpleFusionLayer(nn.Module):
                 nn.ReLU(),
             )
         else:
-            self.fusion = nn.MultiheadAttention(self.embed_dim, self.num_heads, batch_first=False)
-        # self.fusion.apply(init_weights)
+            self.fusion = nn.MultiheadAttention(self.embed_dim, self.num_heads, batch_first=False, dropout=0.1, add_bias_kv=True, add_zero_attn=True)
+        self.fusion.apply(init_weights)
 
     def forward(self, first, second, config):
         if config.fusion == "linear":
@@ -170,6 +171,9 @@ class SimpleFusionLayer(nn.Module):
             attn_weights = attn_weights.cpu().detach().numpy()
             # print("before round", attn_weights)
             attn_weights = np.around(attn_weights, 4)
+            if config.reduce_attention_output:
+                # reduce the attention output to 1024 dimensions
+                attn_output = self.dim_layer(attn_output)
             # print("after round", attn_weights)
             return attn_output.squeeze(0).reshape(first.shape[0], -1), attn_weights
 
