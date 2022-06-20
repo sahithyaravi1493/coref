@@ -109,6 +109,7 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
         if config.include_text:
             if config.attention_based:
                 # If knowledge embeddings need to be represented similar to spans i.e with attention
+                # span_repr, knowledge_embs, batch_first, batch_second, device, config
                 e1, e2 = get_expansion_with_attention(span_repr, text_knowledge_embeddings, batch_first, batch_second,
                                                       device, config)
             else:
@@ -123,6 +124,7 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
 
         if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions'] and not config[
             'exclude_span_repr']:
+            print("Span scoring")
             g1_score = span_scorer(g1)
             g2_score = span_scorer(g2)
             scores += g1_score + g2_score
@@ -323,7 +325,7 @@ if __name__ == '__main__':
         models.append(span_scorer)
 
     optimizer = get_optimizer(config, models)
-    scheduler = StepLR(optimizer, step_size=10, gamma=0.1)
+    scheduler = StepLR(optimizer, step_size=15, gamma=0.1)
     criterion = get_loss_function(config)
 
     logger.info('Number of parameters of mention extractor: {}'.format(

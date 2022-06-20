@@ -14,7 +14,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 config = pyhocon.ConfigFactory.parse_file('configs/config_pairwise.json')
 # Choose whether to embed GPT3 or COMET
 commonsense_model = 'gpt3'
-embedding_mode = "condensed"  # "ind"
+
 
 
 def comet_to_roberta_embeddings(bert_tokenizer, bert_model, comet_inferences_root="comet"):
@@ -106,6 +106,8 @@ def gpt3_roberta_embeddings(bert_tokenizer, bert_model, gpt3_inferences_root="gp
             embeddings = torch.cat((before_embeddings, after_embeddings), axis=0)
             lengths = np.concatenate((before_lengths, after_lengths), axis=0)
             print(embeddings.shape, lengths.shape)
+            if torch.equal(before_embeddings, after_embeddings):
+                print("SAME!")
             starts = embeddings[:, 0, :]
             ends = embeddings[:, -1, :]
             start_ends = torch.hstack((starts, ends))
@@ -115,8 +117,8 @@ def gpt3_roberta_embeddings(bert_tokenizer, bert_model, gpt3_inferences_root="gp
             widths[key] = lengths
             torch.cuda.empty_cache()
 
-        hkl.dump(start_end_embeddings, f"gpt3/{split}_e_startend_ns.hkl", mode='w')
-        hkl.dump(widths, f"gpt3/{split}_e_widths_ns.hkl", mode='w')
+        # hkl.dump(start_end_embeddings, f"gpt3/{split}_e_startend_ns.hkl", mode='w')
+        # hkl.dump(widths, f"gpt3/{split}_e_widths_ns.hkl", mode='w')
         save_pkl_dump(f"gpt3/gpt3_{embedding_mode}_{split}_startend", start_end_embeddings)
         save_pkl_dump(f"gpt3/gpt3_{embedding_mode}_{split}_widths", widths)
         save_pkl_dump(f"gpt3/gpt3_{embedding_mode}_{split}_cont", continuous_embeddings)
@@ -234,6 +236,6 @@ if __name__ == '__main__':
         comet_to_roberta_embeddings(bert_tokenizer, bert_model)
     elif commonsense_model == "gpt3":
         # You can embed individually with "ind" and as one single before or after vector with condensed
-        gpt3_roberta_embeddings(bert_tokenizer, bert_model, embedding_mode="ind", max_inferences=3)
+        gpt3_roberta_embeddings(bert_tokenizer, bert_model, embedding_mode="ind", max_inferences=5)
     else:
         raise ValueError("commonsense_model should be one of comet or gpt3")

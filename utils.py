@@ -6,7 +6,7 @@ import random
 import smtplib
 from datetime import datetime
 
-import hickle as hkl
+
 import numpy as np
 import pandas as pd
 import plotly.figure_factory as ff
@@ -188,6 +188,7 @@ def save_pkl_dump(filename, dictionary):
 
 def load_pkl_dump(filename, ext='pkl'):
     if ext == 'hkl':
+        import hickle as hkl
         a = hkl.load(f'{filename}.hkl')
         return a
 
@@ -319,7 +320,7 @@ def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embed
         after2_init = e2[:, D:]
         both1_init = e1
         both2_init = e2
-
+        # print(before1_init.shape)
         if config.fusion == "linear":
            # Maps span1*before1 embeddings into a single vector
             before1, after1 = fusion_model(span1, before1_init, config), fusion_model(span1, after1_init, config)

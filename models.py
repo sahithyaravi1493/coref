@@ -8,7 +8,14 @@ def init_weights(m):
         nn.init.xavier_uniform_(m.weight)
         nn.init.uniform_(m.bias)
 
-
+def prepare_mask(t):
+    mask = []
+    for i in range(t.shape[0]):
+        current_row = t[i].squeeze(0) # n_inf * 3092
+        non_zero_elements = torch.count_nonzero(current_row)
+        cur_mask = (non_zero_elements==0)
+        mask.append(cur_mask)
+    return torch.stack(mask)
 class SpanEmbedder(nn.Module):
     def __init__(self, config, device):
         super(SpanEmbedder, self).__init__()
@@ -154,7 +161,7 @@ class SimpleFusionLayer(nn.Module):
                 nn.ReLU(),
             )
         else:
-            self.fusion = nn.MultiheadAttention(self.embed_dim, self.num_heads, batch_first=False, dropout=0.1, add_bias_kv=True, add_zero_attn=True)
+            self.fusion = nn.MultiheadAttention(self.embed_dim, self.num_heads, dropout=0.1, batch_first=True)
         self.fusion.apply(init_weights)
 
     def forward(self, first, second, config):
@@ -163,13 +170,18 @@ class SimpleFusionLayer(nn.Module):
         else:
             # print("first, second", first.shape, second.shape)
             # Sequence length * Batch size * embedding dimension
-            query = first.reshape(int(first.shape[1]/self.embed_dim),first.shape[0],-1)
-            key = second.reshape(int(second.shape[1]/self.embed_dim),second.shape[0], -1)
-            value = second.reshape(int(second.shape[1]/self.embed_dim),second.shape[0],-1)
-            attn_output, attn_output_weights = self.fusion(query, key, value)
+            """
+             If specified, a mask of shape (N, S) indicating which elements within key to ignore for the purpose of attention (i.e. treat as “padding”). 
+            """
+            query = first.reshape(first.shape[0],int(first.shape[1]/self.embed_dim), -1)
+            key = second.reshape(second.shape[0], int(second.shape[1]/self.embed_dim),  -1)
+            value = second.reshape(second.shape[0],int(second.shape[1]/self.embed_dim), -1)
+            mask_zeros = prepare_mask(key)
+            print(mask_zeros, mask_zeros.shape)
+            attn_output, attn_output_weights = self.fusion(query, key, value, key_padding_mask = mask_zeros)
             attn_weights = attn_output_weights.reshape(first.shape[0], -1)
             attn_weights = attn_weights.cpu().detach().numpy()
-            # print("before round", attn_weights)
+            print("before round", attn_weights)
             attn_weights = np.around(attn_weights, 4)
             if config.reduce_attention_output:
                 # reduce the attention output to 1024 dimensions

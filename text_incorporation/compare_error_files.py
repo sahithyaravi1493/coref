@@ -7,8 +7,8 @@ pd.set_option('display.expand_frame_repr', False)
 np.set_printoptions(precision=2)
 
 N_INFERENCES = 10
-base = 'pairwise_baseline'
-new_version = 'pairwise_interspan1'
+base = 'pairwise_baseline_1'
+new_version = 'pairwise_inter6_2'
 
 def process(all_expansions):
     inferences = all_expansions.split("After:")
@@ -65,7 +65,7 @@ if __name__ == '__main__':
     print("# errors rectified by new version:", baseline_fails.shape[0])
     p = 0
     n = 0
-    for index, row in concat_fails.iterrows():
+    for index, row in baseline_fails.iterrows():
         if row["actual_labels"] == "tensor(1, device='cuda:0', dtype=torch.int32)":
             p += 1
 
@@ -92,12 +92,12 @@ if __name__ == '__main__':
         
         print("First span inference:")
         for c in combined1:
-            print(c)
+            print(f"{c[0]} {c[1]}")
         # print(b1 + a1)
         print("Second span inference:")
         # print(expansions2, "\n")
         for c in combined2:
-            print(c)
+            print(f"{c[0]} {c[1]}")
         print("#############################\n")
 
 
