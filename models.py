@@ -8,14 +8,38 @@ def init_weights(m):
         nn.init.xavier_uniform_(m.weight)
         nn.init.uniform_(m.bias)
 
-def prepare_mask(t):
+def prepare_mask(t, min_nonzeros=50):
+    """
+    Prepare which key elements need to be masked out or ignored during attention computation.
+    Out of K inferences, the inferences with lowest non-zero elements will have the mask/ignore flag set to True.
+    The # of non_zero elements required to be considered for attention is configurable with min_nonzeros
+    """
+    t = t.reshape(t.shape[1], t.shape[0], -1)
+    #using torch parallel
+    
+    # non_zero_elements = torch.count_nonzero(t, dim=2)
+    # mask = (non_zero_elements < min_nonzeros).fill_diagonal_(False, wrap=True)
+    # print(mask)
+    # # to avoid all True rows which result in NAN in softmax of the attention layer
+    # # print(mask)
+    # # all_zeros_indices = torch.all(mask,dim=1)
+    # # # print(all_zeros_indices)
+    # # mask[all_zeros_indices] = mask[all_zeros_indices].fill_diagonal_(False)
+    # # print(mask)
+    # return mask
+
+   #Iterative method:
     mask = []
     for i in range(t.shape[0]):
-        current_row = t[i].squeeze(0) # n_inf * 3092
-        non_zero_elements = torch.count_nonzero(current_row)
-        cur_mask = (non_zero_elements==0)
-        mask.append(cur_mask)
+        current_row = t[i].squeeze(0) 
+        non_zero_elements = torch.count_nonzero(current_row, dim=1)
+        ignore_elements = (non_zero_elements < min_nonzeros)
+        if torch.all(ignore_elements): # if we ignored all elements in the row, just make first element 1 to avoid NAN
+            ignore_elements[0] = False
+        mask.append(ignore_elements)
     return torch.stack(mask)
+
+    
 class SpanEmbedder(nn.Module):
     def __init__(self, config, device):
         super(SpanEmbedder, self).__init__()
@@ -161,7 +185,7 @@ class SimpleFusionLayer(nn.Module):
                 nn.ReLU(),
             )
         else:
-            self.fusion = nn.MultiheadAttention(self.embed_dim, self.num_heads, dropout=0.1, batch_first=True)
+            self.fusion = nn.MultiheadAttention(self.embed_dim, self.num_heads)
         self.fusion.apply(init_weights)
 
     def forward(self, first, second, config):
@@ -173,19 +197,16 @@ class SimpleFusionLayer(nn.Module):
             """
              If specified, a mask of shape (N, S) indicating which elements within key to ignore for the purpose of attention (i.e. treat as “padding”). 
             """
-            query = first.reshape(first.shape[0],int(first.shape[1]/self.embed_dim), -1)
-            key = second.reshape(second.shape[0], int(second.shape[1]/self.embed_dim),  -1)
-            value = second.reshape(second.shape[0],int(second.shape[1]/self.embed_dim), -1)
-            mask_zeros = prepare_mask(key)
-            print(mask_zeros, mask_zeros.shape)
-            attn_output, attn_output_weights = self.fusion(query, key, value, key_padding_mask = mask_zeros)
-            attn_weights = attn_output_weights.reshape(first.shape[0], -1)
-            attn_weights = attn_weights.cpu().detach().numpy()
-            print("before round", attn_weights)
+            query = first.reshape(int(first.shape[1]/self.embed_dim), first.shape[0], -1)
+            key = second.reshape( int(second.shape[1]/self.embed_dim), second.shape[0],  -1)
+            value = second.reshape(int(second.shape[1]/self.embed_dim), second.shape[0], -1)
+            key_padding_mask = prepare_mask(key)
+            # print(mask_zeros.shape)
+            attn_output, attn_output_weights = self.fusion(query, key, value, key_padding_mask=key_padding_mask)
+            attn_weights = attn_output_weights.reshape(first.shape[0], -1).cpu().detach().numpy()
             attn_weights = np.around(attn_weights, 4)
             if config.reduce_attention_output:
                 # reduce the attention output to 1024 dimensions
                 attn_output = self.dim_layer(attn_output)
-            # print("after round", attn_weights)
             return attn_output.squeeze(0).reshape(first.shape[0], -1), attn_weights
 

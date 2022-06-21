@@ -581,7 +581,8 @@ def save_attention_weights(config, all_a1, all_a2, all_b1, all_b2, all_pairs1, a
 
         
 def save_error_examples(config, strict_preds, all_labels, all_s1, all_s2, all_pairs1, all_pairs2, all_k1=None, all_k2=None):
-    compare = (strict_preds.cpu().detach().numpy() == all_labels.cpu().detach().numpy())
+    all_labels = all_labels.cpu().detach().numpy()
+    compare = (strict_preds.cpu().detach().numpy() == all_labels)
     # print(compare)
     indices = (np.where(compare == 0))
     # print(len(all_labels), len(indices[0]))

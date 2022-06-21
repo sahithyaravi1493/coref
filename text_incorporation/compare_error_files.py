@@ -7,16 +7,18 @@ pd.set_option('display.expand_frame_repr', False)
 np.set_printoptions(precision=2)
 
 N_INFERENCES = 10
-base = 'pairwise_baseline_1'
-new_version = 'pairwise_inter6_2'
+base = 'pairwise_baseline1'
+new_version = 'pairwise_intraspan1'
 
 def process(all_expansions):
     inferences = all_expansions.split("After:")
     for i in range(len(inferences)):
         inferences[i] = text_processing(inferences[i])
-    before_array = [inf.lstrip()+"." for inf in inferences[0].split(".") if len(inf.split()) > 3][:5]
+    inferences.append("")
+    inferences.append("")
+    before_array = [inf.lstrip()+"." for inf in inferences[0].split(".") if len(inf.split()) > 3][:int(N_INFERENCES/2)]
     before_array = before_array + ["NONE"]*(int(N_INFERENCES/2)-len(before_array))
-    after_array = [inf.lstrip()+"." for inf in inferences[1].split(".") if len(inf.split()) > 3][:5]
+    after_array = [inf.lstrip()+"." for inf in inferences[1].split(".") if len(inf.split()) > 3][:int(N_INFERENCES/2)]
     after_array = after_array + ["NONE"]*(int(N_INFERENCES/2)-len(after_array))
     return before_array + after_array
 
@@ -66,7 +68,7 @@ if __name__ == '__main__':
     p = 0
     n = 0
     for index, row in baseline_fails.iterrows():
-        if row["actual_labels"] == "tensor(1, device='cuda:0', dtype=torch.int32)":
+        if row["actual_labels"] == 1:
             p += 1
 
         print("######################### EXAMPLE ##################")
