@@ -10,25 +10,44 @@
   "embedding_dimension": 20,
 
   "max_mention_span": 10,
-  "use_gold_mentions": false,
+  "use_gold_mentions": true,
   "mention_type": "events",
   "top_k": 0.25,
-  "split": "test",
-  "training_method": "continue",
+  "split": "dev",
+  "training_method": "pipeline",
   "subtopic": false,
-  "use_predicted_topics": true,
+  "use_predicted_topics": false,
   "segment_window": 512,
   "exact": false,
 
-  "topic_level": false,
+  "topic_level": true,
   "predicted_topics_path": "/home/nlp/ariecattan/coreference/event_entity_coref_ecb_plus/data/external/document_clustering/predicted_topics",
 
+  "include_graph": false,
+  "knowledge_embedding_dimension": 200,
+  "relations_per_sentence": 2,
+  "embedding_type": "rgcn",
+  "stored_embeddings_path": "comet/rgcn_hidden",
+
+  "exclude_span_repr": false,
+  
+  "include_text": true,
+  "mode": "gpt3",
+  "attention_based": true,
+  "fusion": "interspan",
+  "inferences_path": "gpt3/output",
+  "text_embeddings_path": "gpt3/gpt3_ind",
+  "reduce_attention_output":false,
+  "n_inferences":10,
+  "expansion_dimension":3092,
+  "plot_cosine": false,
+
   "data_folder": "data/ecb/mentions",
-  "save_path": "models/pairwise_scorers",
-  "model_path" : "models/pairwise_scorers",
-  "model_num": 6,
+  "save_path": "models/interspan",
+  "model_path" : "models/interspan",
+  "model_num": 8,
   "keep_singletons": false,
 
-  "threshold": 0.75,
+  "threshold": 0.7,
   "linkage_type": "average"
 }

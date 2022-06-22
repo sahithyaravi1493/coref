@@ -20,7 +20,8 @@ def main():
 
     path = sys.argv[1]
     mention_type = sys.argv[2]
-    sys_file = 'data/ecb/gold/dev_{}_topic_level.conll'.format(mention_type)
+    print(path, mention_type)
+    sys_file = 'data/ecb/gold_singletons/dev_{}_topic_level.conll'.format(mention_type)
 
     all_scores = {}
     max_conll_f1 = (None, 0)

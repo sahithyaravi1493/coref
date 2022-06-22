@@ -35,7 +35,7 @@ def prepare_mask(t, min_nonzeros=50):
         non_zero_elements = torch.count_nonzero(current_row, dim=1)
         ignore_elements = (non_zero_elements < min_nonzeros)
         if torch.all(ignore_elements): # if we ignored all elements in the row, just make first element 1 to avoid NAN
-            ignore_elements[0] = False
+            ignore_elements[-1] = False
         mask.append(ignore_elements)
     return torch.stack(mask)
 
@@ -185,7 +185,7 @@ class SimpleFusionLayer(nn.Module):
                 nn.ReLU(),
             )
         else:
-            self.fusion = nn.MultiheadAttention(self.embed_dim, self.num_heads)
+            self.fusion = nn.MultiheadAttention(self.embed_dim, self.num_heads, dropout=0.3)
         self.fusion.apply(init_weights)
 
     def forward(self, first, second, config):

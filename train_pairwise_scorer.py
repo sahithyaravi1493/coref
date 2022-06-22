@@ -10,8 +10,7 @@ from transformers import AutoTokenizer, AutoModel
 
 from evaluator import Evaluation
 from model_utils import *
-from models import SimpleFusionLayer
-from models import SpanEmbedder, SpanScorer, SimplePairWiseClassifier
+from models import SpanEmbedder, SpanScorer, SimplePairWiseClassifier, SimpleFusionLayer
 from spans import TopicSpans
 from utils import *
 from tqdm import tqdm 
@@ -325,7 +324,7 @@ if __name__ == '__main__':
         models.append(span_scorer)
 
     optimizer = get_optimizer(config, models)
-    scheduler = StepLR(optimizer, step_size=15, gamma=0.1)
+    scheduler = StepLR(optimizer, step_size=10, gamma=0.1)
     criterion = get_loss_function(config)
 
     logger.info('Number of parameters of mention extractor: {}'.format(
@@ -499,6 +498,9 @@ if __name__ == '__main__':
             config['model_path'], 'span_scorer_{}'.format(epoch)))
         torch.save(pairwise_model.state_dict(), os.path.join(
             config['model_path'], 'pairwise_scorer_{}'.format(epoch)))
+        torch.save(fusion_model.state_dict(), os.path.join(
+            config['model_path'], 'fusion_model_{}'.format(epoch)))
+
         # Document wrong predictions of the best model 
         cur_f1 = eval.get_f1()
         if cur_f1 > best_f1:

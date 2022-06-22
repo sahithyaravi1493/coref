@@ -81,7 +81,7 @@ def gpt3_roberta_embeddings(bert_tokenizer, bert_model, gpt3_inferences_root="gp
                 after_array = ["."]
             before_array = sorted(before_array[:max_inferences], reverse=False)
             after_array = sorted(after_array[:max_inferences], reverse=False)
-
+            print(before_array, after_array)
             before_condensed = " ".join(before_array).lstrip(". ") + "."
             after_condensed = " ".join(after_array).lstrip(". ") + "."
 
@@ -236,6 +236,6 @@ if __name__ == '__main__':
         comet_to_roberta_embeddings(bert_tokenizer, bert_model)
     elif commonsense_model == "gpt3":
         # You can embed individually with "ind" and as one single before or after vector with condensed
-        gpt3_roberta_embeddings(bert_tokenizer, bert_model, embedding_mode="condensed", max_inferences=5)
+        gpt3_roberta_embeddings(bert_tokenizer, bert_model, embedding_mode="ind", max_inferences=5)
     else:
         raise ValueError("commonsense_model should be one of comet or gpt3")
