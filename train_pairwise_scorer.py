@@ -16,13 +16,7 @@ from utils import *
 from tqdm import tqdm 
 import time
 
-os.environ["WANDB_SILENT"] = "true"
-wandb.login(key='')
-wandb.init(
-    project="coref-pairwise",
-    # notes="baselin",
 
-)
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 gc.collect()
@@ -267,6 +261,13 @@ if __name__ == '__main__':
     create_folder(config['model_path'])
 
     # Weights and biases
+    os.environ["WANDB_SILENT"] = "true"
+    wandb.login(key='')
+    wandb.init(
+        project="coref-pairwise",
+        # notes="baselin",
+
+    )
     wandb.run.name = f'{config["log_path"].replace("logs/", "")}'
 
     # GPU number

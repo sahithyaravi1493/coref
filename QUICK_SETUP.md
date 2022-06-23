@@ -101,13 +101,10 @@ to produce conll files at the corpus level.
 
 The output of the `predict.py` script is a file in the standard conll format. 
 For evaluation run
-`python coval/scorer.py [your best conll model] /ubc/cs/research/nlp/sahiravi/coref/data/ecb/gold_singletons/dev_events_topic_level.conll`
-
+`python coval/scorer.py  /ubc/cs/research/nlp/sahiravi/coref/data/ecb/gold_singletons/dev_events_topic_level.conll ` [your best conll model]
 
 
 ## Notes
-
-
 * If you chose to train the pairwise with the end-to-end method, you don't need to provide a `span_repr_path` or a `span_scorer_path` in the
 `config_pairwise.json`.  
 
@@ -125,4 +122,4 @@ For evaluation run
 * [Mandar Joshi](https://homes.cs.washington.edu/~mandar90/)
 * [Ido Dagan](https://u.cs.biu.ac.il/~dagan/) 
 
- 
+

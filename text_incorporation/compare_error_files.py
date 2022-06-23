@@ -7,8 +7,8 @@ pd.set_option('display.expand_frame_repr', False)
 np.set_printoptions(precision=2)
 
 N_INFERENCES = 10
-base = 'pairwise_baseline1'
-new_version = 'pairwise_intraspan1'
+base = 'baseline_12345'
+new_version = 'intraspan_12345'
 
 def process(all_expansions):
     inferences = all_expansions.split("After:")
@@ -64,12 +64,14 @@ if __name__ == '__main__':
     baseline_fails = errors1[~errors1['Unnamed: 0'].isin(common['Unnamed: 0_x'])]
     concat_fails = errors2[~errors2['Unnamed: 0'].isin(common['Unnamed: 0_y'])]
 
-    print("# errors rectified by new version:", baseline_fails.shape[0])
+    print("Percentage errors rectified by new version:", baseline_fails.shape[0]/errors1.shape[0])
     p = 0
     n = 0
     for index, row in baseline_fails.iterrows():
         if row["actual_labels"] == 1:
             p += 1
+        else:
+            n += 1
 
         print("######################### EXAMPLE ##################")
         print(f'{row["actual_labels"]}')
@@ -87,20 +89,42 @@ if __name__ == '__main__':
         a2 = ast.literal_eval(attn[(attn["c1"] == row["c1"]) & (attn["span1"] == row["span1"]) & (attn["c2"] == row["c2"]) & (attn["span2"] == row["span2"])]["a2"].values[0])
 
         # if b1 and a1 and b2 and a2:
-        combined1 = list(zip(expansions1, b1+a1))
-        combined2 = list(zip(expansions2, b2+a2))
-        combined1 = sorted(combined1, key=lambda l:l[1], reverse=True)
-        combined2 = sorted(combined2, key=lambda l:l[1], reverse=True)
+        before1 = list(zip(expansions1[:5], b1))
+        before2 = list(zip(expansions2[:5], b2))
+        after1 = list(zip(expansions1[5:], a1))
+        after2 = list(zip(expansions2[5:], a2))
+        before1 = sorted(before1, key=lambda l:l[1], reverse=True)
+        before2 = sorted(before2, key=lambda l:l[1], reverse=True)
+        after1 = sorted(after1, key=lambda l:l[1], reverse=True)
+        after2 = sorted(after2, key=lambda l:l[1], reverse=True)
+        print(f"\nBefore {row['span1']}:")
+        for c in before1:
+            print(f"{c[0]} {c[1]}")
+        print(f"\nAfter {row['span1']}:")
+        for c in after1:
+            print(f"{c[0]} {c[1]}")
+        print(f"\nBefore {row['span2']}:")
+        for c in before2:
+            print(f"{c[0]} {c[1]}")
+        print(f"\nBefore {row['span2']}:")
+        for c in after2:
+            print(f"{c[0]} {c[1]}")
+        # combined2 = sorted(combined2, key=lambda l:l[1], reverse=True)
+        # combined1 = list(zip(expansions1, b1+a1))
+        # combined2 = list(zip(expansions2, b2+a2))
+        # combined1 = sorted(combined1, key=lambda l:l[1], reverse=True)
+        # combined2 = sorted(combined2, key=lambda l:l[1], reverse=True)
         
-        print("First span inference:")
-        for c in combined1:
-            print(f"{c[0]} {c[1]}")
-        # print(b1 + a1)
-        print("Second span inference:")
-        # print(expansions2, "\n")
-        for c in combined2:
-            print(f"{c[0]} {c[1]}")
-        print("#############################\n")
+        # print("First span inference:")
+        # for c in combined1:
+        #     print(f"{c[0]} {c[1]}")
+        # # print(b1 + a1)
+        # print("Second span inference:")
+        # # print(expansions2, "\n")
+        # for c in combined2:
+        #     print(f"{c[0]}, {c[1]}")
+        # print("#############################\n")
 
 
     print("# of positive error corrections", p)
+    print("# of negative error corrections", n)
