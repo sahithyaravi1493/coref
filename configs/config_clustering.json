@@ -1,5 +1,5 @@
 {
-  "gpu_num" : [1],
+  "gpu_num" : [0],
 
   "bert_model": "roberta-large",
   "bert_tokenizer": "roberta-large",
@@ -13,7 +13,7 @@
   "use_gold_mentions": true,
   "mention_type": "events",
   "top_k": 0.25,
-  "split": "dev",
+  "split": "test",
   "training_method": "pipeline",
   "subtopic": false,
   "use_predicted_topics": false,
@@ -21,7 +21,7 @@
   "exact": false,
 
   "topic_level": true,
-  "predicted_topics_path": "/home/nlp/ariecattan/coreference/event_entity_coref_ecb_plus/data/external/document_clustering/predicted_topics",
+  "predicted_topics_path": "predicted_topics/",
 
   "include_graph": false,
   "knowledge_embedding_dimension": 200,
@@ -34,7 +34,7 @@
   "include_text": true,
   "mode": "gpt3",
   "attention_based": true,
-  "fusion": "interspan",
+  "fusion": "random",
   "inferences_path": "gpt3/output",
   "text_embeddings_path": "gpt3/gpt3_ind",
   "reduce_attention_output":false,
@@ -43,11 +43,11 @@
   "plot_cosine": false,
 
   "data_folder": "data/ecb/mentions",
-  "save_path": "models/interspan",
-  "model_path" : "models/interspan",
-  "model_num": 8,
+  "save_path": "models/intraspan_random",
+  "model_path" : "models/intraspan_random",
+  "model_num": 9,
   "keep_singletons": false,
 
-  "threshold": 0.7,
+  "threshold": 0.65,
   "linkage_type": "average"
 }

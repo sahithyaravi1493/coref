@@ -17,8 +17,8 @@
   "use_predicted_topics": false,
   "segment": true,
 
-  "random_seed": 123,
-  "epochs": 12,
+  "random_seed": 42,
+  "epochs": 10,
   "batch_size": 512,
   "learning_rate": 1e-4,
   "weight_decay": 0,
@@ -41,7 +41,7 @@
   "include_text": true,
   "mode": "gpt3",
   "attention_based": true,
-  "fusion": "intraspan",
+  "fusion": "random",
   "inferences_path": "gpt3/output",
   "text_embeddings_path": "gpt3/gpt3_ind",
   "reduce_attention_output":false,
@@ -49,9 +49,9 @@
   "expansion_dimension":3092,
   "plot_cosine": false,
 
-  "log_path": "logs/intraspan/",
+  "log_path": "logs/intraspan_random/",
   "data_folder": "data/ecb/mentions",
   "span_repr_path": "models/span_scorers/events_span_repr_0",
   "span_scorer_path": "models/span_scorers/events_span_scorer_0",
-  "model_path": "models/intraspan/"
+  "model_path": "models/intraspan_random/"
 }

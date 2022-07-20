@@ -57,6 +57,7 @@ class Corpus:
         :return:
         '''
         text_by_subtopics = collections.defaultdict(list)
+        print("PREDICTED subtopics", predicted_subtopics)
         for i, doc_list in enumerate(predicted_subtopics):
             for doc in doc_list:
                 doc_key = doc + '.xml'

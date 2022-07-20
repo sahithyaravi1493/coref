@@ -5,7 +5,7 @@ import pickle
 import random
 import smtplib
 from datetime import datetime
-
+import random
 
 import numpy as np
 import pandas as pd
@@ -337,6 +337,18 @@ def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embed
             after2, after2_weights = fusion_model(span2, after2_init, config)
             e1_new = torch.cat((before1, after1), axis=1)
             e2_new = torch.cat((before2, after2), axis=1)
+        elif config.fusion == "random":
+            # Intra-span - key =inferences for span1, query= span1
+            # print("Attention inputs", span1.shape, both1_init.shape)
+            k = random.randint(0,4)
+
+            before1 = before1_init.reshape(e1.shape[0], 5, -1)[:,k,:]
+            after1 = after1_init.reshape(e1.shape[0], 5, -1)[:,k,:]
+            before2 = before2_init.reshape(e1.shape[0], 5, -1)[:,k,:]
+            after2 = after2_init.reshape(e1.shape[0], 5, -1)[:,k,:]
+            # print(before1.shape, after1.shape)
+            e1_new = torch.cat((before1, after1), axis=1)
+            e2_new = torch.cat((before2, after2), axis=1)
             # print("Attention output", g1_new.shape, g2_new.shape)
         elif config.fusion == "interspan":
             # Inter-span - key =inferences for span1, query= span2
@@ -567,7 +579,7 @@ def save_span_expansions(config, all_expansions, all_spans, all_lookups):
     
 def save_attention_weights(config, all_a1, all_a2, all_b1, all_b2, all_pairs1, all_pairs2, all_s1, all_s2):
     if config.include_text:
-        if config.fusion != "concat":
+        if config.fusion == "interspan" or config.fusion =="intraspan":
             df_attn = pd.DataFrame()
             df_attn["b1"] = all_b1
             df_attn["a1"] = all_a1

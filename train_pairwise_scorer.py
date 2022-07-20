@@ -440,7 +440,7 @@ if __name__ == '__main__':
                         scores += g1_score + g2_score
 
                     ############DEBUG#######
-                    if config.include_text and config.fusion != "concat":
+                    if config.include_text and config.fusion != "concat" and config.fusion!="random":
                         # print(attn_weights[0].shape)
                         all_b1.extend(attn_weights[0].tolist())
                         all_a1.extend(attn_weights[1].tolist())
