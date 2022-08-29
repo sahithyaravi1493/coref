@@ -35,7 +35,7 @@ def prepare_mask(t, min_nonzeros=50):
         non_zero_elements = torch.count_nonzero(current_row, dim=1)
         ignore_elements = (non_zero_elements < min_nonzeros)
         if torch.all(ignore_elements): # if we ignored all elements in the row, just make first element 1 to avoid NAN
-            ignore_elements[-1] = False
+            ignore_elements[0] = False
         mask.append(ignore_elements)
     return torch.stack(mask)
 
@@ -163,7 +163,7 @@ class SimplePairWiseClassifier(nn.Module):
 
 class SimpleFusionLayer(nn.Module):
     def __init__(self, config):
-        self.num_heads = 1
+        self.num_heads = 2
         self.embed_dim = 3092
         super(SimpleFusionLayer, self).__init__()
         self.input_layer = config.bert_hidden_size * 3 if config.with_head_attention else config.bert_hidden_size * 2
@@ -174,9 +174,9 @@ class SimpleFusionLayer(nn.Module):
         self.final_layer = self.input_layer
         self.dim_layer = nn.Linear(self.embed_dim, 1024)
         if config.fusion == "inter_intra":
-            fusion_input = int(config.n_inferences)+1
+            fusion_input = int(config.n_inferences)+2
         else:
-            fusion_input =  int(config.n_inferences/2)+1
+            fusion_input =  int(config.n_inferences/2)+2
         self.input_layer *= fusion_input
         if config.fusion == "linear":
             self.fusion = nn.Sequential(
@@ -185,8 +185,9 @@ class SimpleFusionLayer(nn.Module):
                 nn.ReLU(),
             )
         else:
-            self.fusion = nn.MultiheadAttention(self.embed_dim, self.num_heads, dropout=0.3)
+            self.fusion = nn.MultiheadAttention(self.embed_dim, self.num_heads, dropout=0.4)
         self.fusion.apply(init_weights)
+        self.norm = nn.LayerNorm(self.embed_dim, eps=1e-5)
 
     def forward(self, first, second, config):
         if config.fusion == "linear":
@@ -197,9 +198,13 @@ class SimpleFusionLayer(nn.Module):
             """
              If specified, a mask of shape (N, S) indicating which elements within key to ignore for the purpose of attention (i.e. treat as “padding”). 
             """
+            
             query = first.reshape(int(first.shape[1]/self.embed_dim), first.shape[0], -1)
             key = second.reshape( int(second.shape[1]/self.embed_dim), second.shape[0],  -1)
             value = second.reshape(int(second.shape[1]/self.embed_dim), second.shape[0], -1)
+            query = self.norm(query)
+            key = self.norm(key)
+            value = self.norm(value)
             key_padding_mask = prepare_mask(key)
             # print(mask_zeros.shape)
             attn_output, attn_output_weights = self.fusion(query, key, value, key_padding_mask=key_padding_mask)

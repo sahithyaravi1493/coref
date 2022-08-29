@@ -214,6 +214,8 @@ def load_stored_embeddings(config, split):
 
 def load_text_embeddings(config, split):
     if config.mode == "comet":
+        expansions = {}
+    elif config.mode == "comet-old":
         expansions = load_json(f"{config.inferences_path}_exp_sentences_ns.json")
     else:
         expansions = pd.read_csv(f"{config.inferences_path}_{split}.csv")
@@ -331,17 +333,16 @@ def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embed
         elif config.fusion == "intraspan":
             # Intra-span - key =inferences for span1, query= span1
             # print("Attention inputs", span1.shape, both1_init.shape)
-            before1, before1_weights = fusion_model(span1, before1_init, config)
-            after1, after1_weights = fusion_model(span1, after1_init, config)
-            before2, before2_weights = fusion_model(span2, before2_init, config)
-            after2, after2_weights = fusion_model(span2, after2_init, config)
+            before1, before1_weights = fusion_model(span1, torch.cat((span1, before1_init), axis=1), config)
+            after1, after1_weights = fusion_model(span1, torch.cat((span1, after1_init), axis=1), config)
+            before2, before2_weights = fusion_model(span2, torch.cat((span2, before2_init), axis=1), config)
+            after2, after2_weights = fusion_model(span2, torch.cat((span2, after2_init), axis=1), config)
             e1_new = torch.cat((before1, after1), axis=1)
             e2_new = torch.cat((before2, after2), axis=1)
         elif config.fusion == "random":
             # Intra-span - key =inferences for span1, query= span1
             # print("Attention inputs", span1.shape, both1_init.shape)
             k = random.randint(0,4)
-
             before1 = before1_init.reshape(e1.shape[0], 5, -1)[:,k,:]
             after1 = after1_init.reshape(e1.shape[0], 5, -1)[:,k,:]
             before2 = before2_init.reshape(e1.shape[0], 5, -1)[:,k,:]
@@ -352,10 +353,10 @@ def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embed
             # print("Attention output", g1_new.shape, g2_new.shape)
         elif config.fusion == "interspan":
             # Inter-span - key =inferences for span1, query= span2
-            before1, before1_weights = fusion_model(span2, before1_init, config)
-            after1, after1_weights = fusion_model(span2, after1_init, config)
-            before2, before2_weights = fusion_model(span1, before2_init, config)
-            after2, after2_weights = fusion_model(span1, after2_init, config)
+            before1, before1_weights = fusion_model(span2, torch.cat((span1, before1_init), axis=1), config)
+            after1, after1_weights = fusion_model(span2, torch.cat((span1, after1_init), axis=1), config)
+            before2, before2_weights = fusion_model(span1, torch.cat((span2, before2_init), axis=1), config)
+            after2, after2_weights = fusion_model(span1, torch.cat((span2, after2_init), axis=1), config)
             e1_new = torch.cat((before1, after1), axis=1)
             e2_new = torch.cat((before2, after2), axis=1)
         elif config.fusion == "interspan_full":
@@ -461,13 +462,44 @@ def get_span_specific_embeddings(topic_spans, span_repr, all_expansions, all_exp
             csk_widths.append(width)
             csk_continuous.append(cont)
             fine_grained_expansions.append(final_expansions)
+    elif config.mode == "comet":
+        for i in (range(len(combined_ids))):
+            cid = combined_ids[i]
+            # event = events[i].strip()
+            # print("EVent", cid, event, topic_spans.width[i])
+            key = cid
+            # The vector specific to this event
+            se, cont, width = torch.zeros(config.n_inferences, 2048), torch.zeros(config.n_inferences,
+                                                                                  1024), torch.tensor(
+                [80] * config.n_inferences)
+
+            if key in all_expansion_embeddings['startend']:
+                # Key value lookup of saved expansions
+                se = torch.tensor(all_expansion_embeddings['startend'][key])
+                cont = torch.tensor(all_expansion_embeddings['cont'][key])
+                width = torch.tensor(all_expansion_embeddings['width'][key])
+            else:
+                misses += 1
+            # print("width", width.size())
+            final_expansions = ""
+            # selection = all_expansions.loc[all_expansions["combined_id"] == cid]
+            # # selection = selection[all_expansions["event"] == event]
+            # if selection.empty:
+            #     final_expansions = ""
+            # else:
+            #     final_expansions = selection["predictions"].values[0]
+            # print("SE", se.size())
+            csk_start_ends.append(se)
+            csk_widths.append(width)
+            csk_continuous.append(cont)
+            fine_grained_expansions.append(final_expansions)
     else:
         cos = nn.CosineSimilarity(dim=1, eps=1e-8)
         for i in (range(len(combined_ids))):
             # Look up inferences of a particular sentence
             key = combined_ids[i]
             expansions = np.array(all_expansions[key])
-            if config.attention_based:
+            if True:
                 se = torch.tensor(all_expansion_embeddings['startend'][key]).cuda()
                 cont = torch.tensor(all_expansion_embeddings['cont'][key]).cuda()
                 width = torch.tensor(all_expansion_embeddings['width'][key]).cuda()

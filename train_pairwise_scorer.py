@@ -100,7 +100,7 @@ def train_pairwise_classifier(config, pairwise_model, span_repr, span_scorer, sp
         e1, e2 = None, None
 
         if config.include_text:
-            if config.attention_based:
+            if True:
                 # If knowledge embeddings need to be represented similar to spans i.e with attention
                 # span_repr, knowledge_embs, batch_first, batch_second, device, config
                 e1, e2 = get_expansion_with_attention(span_repr, text_knowledge_embeddings, batch_first, batch_second,
@@ -418,7 +418,7 @@ if __name__ == '__main__':
                     knowledge_embeddings = topic_spans.knowledge_start_end_embeddings, topic_spans.knowledge_continuous_embeddings, topic_spans.knowledge_width
                     e1, e2 = None, None # expansion embeddings
                     if config.include_text:
-                        if config.attention_based:
+                        if True:
                             # If knowledge embeddings need to be represented similar to spans i.e with attention
                             e1, e2 = get_expansion_with_attention(span_repr, knowledge_embeddings, first_idx,
                                                                   second_idx, device, config)

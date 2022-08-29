@@ -5,46 +5,79 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel
-
-from config_expansions import *
+import os
+# from config_expansions import *
+import sys
+sys.path.append('/ubc/cs/research/nlp/sahiravi/coref')
+import pandas as pd
 from model_utils import pad_and_read_bert
-from utils import save_pkl_dump
+from utils import save_pkl_dump, load_json
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-config = pyhocon.ConfigFactory.parse_file('configs/config_pairwise.json')
+
 # Choose whether to embed GPT3 or COMET
-commonsense_model = 'gpt3'
+commonsense_model = 'comet'
 
 
 
-def comet_to_roberta_embeddings(bert_tokenizer, bert_model, comet_inferences_root="comet"):
+def comet_to_roberta_embeddings(bert_tokenizer, bert_model, comet_inferences_root="coref_expansion", embedding_mode="ind", max_inferences=5):
+    """
+
+    @param bert_tokenizer:
+    @type bert_tokenizer:
+    @param bert_model:
+    @type bert_model:
+    @param gpt3_inferences_root:
+    @type gpt3_inferences_root:
+    @param embedding_mode:
+    @type embedding_mode:
+    @return:
+    @rtype:
+    """
     start_end_embeddings = {}
     continuous_embeddings = {}
     widths = {}
-    for split in ['train', 'val']:
-        all_expansions = load_json(f"{comet_inferences_root}/{split}_exp_sentences_ns.json")
-        for key, expansions in tqdm(all_expansions.items()):
-            # Tokenize all inferences
-            token_ids = []
-            for inf in expansions:
-                # print(inf)
-                token_ids.append(bert_tokenizer.encode(inf))
-            # Find all embeddings of the inferences and find start_end_embeddings
-            embeddings, lengths = pad_and_read_bert(token_ids, bert_model)
+    paths = {
+        'train':'/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_train.csv',
+        'dev': '/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_dev.csv',
+        'test': '/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_test.csv'
+    }
+    for split in ['train', 'dev', 'test']:
+        df = pd.read_csv(paths[split])
+        expansions = load_json(f"{comet_inferences_root}/expansions_{split}.json")
+        for index, row in  tqdm(df.iterrows(), total=df.shape[0]):
+            idx = row["combined_id"]
+            key = idx
+            sentence = row["sentence"]
+            before_array = ["Before this," + e + "." for e in expansions["isBefore"][idx]]
+            after_array = ["After this," + e + "." for e in expansions["isAfter"][idx]]
+            before_token_ids = [bert_tokenizer.encode(inf) for inf in before_array]
+            after_token_ids = [bert_tokenizer.encode(inf) for inf in after_array]
+            max_len = max([len(d) for d in (before_token_ids + after_token_ids)])
+            before_embeddings, before_lengths = pad_and_read_bert(before_token_ids, bert_model, max_len)
+            after_embeddings, after_lengths = pad_and_read_bert(after_token_ids, bert_model, max_len)
+            before_embeddings = F.pad(before_embeddings, pad=(0, 0, 0, 0, 0, max_inferences - before_embeddings.shape[0]))
+            before_lengths = np.pad(before_lengths, (0, max_inferences - before_lengths.shape[0]), 'constant', constant_values=(0))
+            after_embeddings = F.pad(after_embeddings, pad=(0, 0, 0, 0, 0, max_inferences - after_embeddings.shape[0]))
+            after_lengths = np.pad(after_lengths, (0, max_inferences - after_lengths.shape[0]), 'constant', constant_values=(0))
+            # Stack before and after
+            embeddings = torch.cat((before_embeddings, after_embeddings), axis=0)
+            lengths = np.concatenate((before_lengths, after_lengths), axis=0)
+            print(embeddings.shape, lengths.shape)
+            # if torch.equal(before_embeddings, after_embeddings):
+            #     print("SAME!")
             starts = embeddings[:, 0, :]
             ends = embeddings[:, -1, :]
             start_ends = torch.hstack((starts, ends))
             start_end_embeddings[key] = start_ends.cpu().detach().numpy()
-            # continuous_embeddings[key] = embeddings.cpu().detach().numpy()
+            print(start_ends.shape)
+            continuous_embeddings[key] = embeddings.cpu().detach().numpy()
             widths[key] = lengths
             torch.cuda.empty_cache()
-            # print(start_end_embeddings[key].shape, continuous_embeddings[key].shape, widths[key].shape)
-
-        hkl.dump(continuous_embeddings, f"comet/{split}_e_cont_ns.hkl", mode='w')
-        save_pkl_dump(f"comet/{split}_e_startend", start_end_embeddings)
-        save_pkl_dump(f"comet/{split}_e_cont", continuous_embeddings)
-        save_pkl_dump(f"comet/{split}_e_widths", widths)
-
+        save_pkl_dump(f"comet/comet_{embedding_mode}_{split}_startend", start_end_embeddings)
+        save_pkl_dump(f"comet/comet_{embedding_mode}_{split}_widths", widths)
+        save_pkl_dump(f"comet/comet_{embedding_mode}_{split}_cont", continuous_embeddings)
+        print(f"Done {split}")
 
 def gpt3_roberta_embeddings(bert_tokenizer, bert_model, gpt3_inferences_root="gpt3", embedding_mode="ind", max_inferences=5):
     """
@@ -230,8 +263,8 @@ if __name__ == '__main__':
         device = 'cpu'
 
     # Load model based on configuration of pairwise scorer
-    bert_tokenizer = AutoTokenizer.from_pretrained(config['bert_tokenizer'])
-    bert_model = AutoModel.from_pretrained(config['bert_model']).to(device)
+    bert_tokenizer = AutoTokenizer.from_pretrained("roberta-large")
+    bert_model = AutoModel.from_pretrained("roberta-large").to(device)
     bert_model.eval()
     ids = bert_tokenizer.encode('granola bars')
     embeddings, lengths = pad_and_read_bert([ids], bert_model)
@@ -240,6 +273,7 @@ if __name__ == '__main__':
     if commonsense_model == "comet":
         comet_to_roberta_embeddings(bert_tokenizer, bert_model)
     elif commonsense_model == "gpt3":
+        config = pyhocon.ConfigFactory.parse_file('configs/config_pairwise.json')
         # You can embed individually with "ind" and as one single before or after vector with condensed
         gpt3_roberta_embeddings(bert_tokenizer, bert_model, embedding_mode="ind", max_inferences=5)
     else:

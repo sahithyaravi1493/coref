@@ -25,13 +25,13 @@ cluster_paths = {
 sentences = {
         'train': pd.read_csv('/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_train.csv'),
         'val': pd.read_csv('/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_dev.csv'),
-        # 'test': pd.read_csv('/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_test.csv)'
+        'test': pd.read_csv('/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_test.csv')
     }
 
 # all original expansions
 expansions = {
-        'train':load_json('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/expansions_train.json'),
-        'val': load_json('/ubc/cs/research/nlp/sahiravi/comet-atomic-2020/coref_expansion/expansions_val.json'),
+        'train':load_json('coref_expansion/expansions_train.json'),
+        'val': load_json('coref_expansion/expansions_val.json'),
         # 'test': '/ubc/cs/research/nlp/sahiravi/datasets/coref/sentence_ecb_corpus_test.csv'
     }
 relation_map = load_json("/ubc/cs/research/nlp/sahiravi/coref/comet/relation_map_no_subject.json")

@@ -215,7 +215,7 @@ if __name__ == '__main__':
                     knowledge_embeddings = topic_spans.knowledge_start_end_embeddings, topic_spans.knowledge_continuous_embeddings, topic_spans.knowledge_width
                     e1, e2 = None, None # expansion embeddings
                     if config.include_text:
-                        if config.attention_based:
+                        if True:
                             # If knowledge embeddings need to be represented similar to spans i.e with attention
                             e1, e2 = get_expansion_with_attention(span_repr, knowledge_embeddings, first_idx,
                                                                   second_idx, device, config)
