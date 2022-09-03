@@ -12,15 +12,27 @@ sys.path.append('/ubc/cs/research/nlp/sahiravi/coref')
 import pandas as pd
 from model_utils import pad_and_read_bert
 from utils import save_pkl_dump, load_json
+from random import sample
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 # Choose whether to embed GPT3 or COMET
-commonsense_model = 'comet'
+commonsense_model = 'gpt3'
+
+def lexical_overlap(vocab, s1, threshold=0.75):
+    if not vocab or not s1:
+        return 0
+    w1 = s1.split()
+
+    for s2 in vocab:
+        w2 = s2.split()
+        overlap = len(set(w1) & set(w2)) / (len(w1)+1e-8)
+        if overlap > threshold:
+            return True
+    return False
 
 
 
-def comet_to_roberta_embeddings(bert_tokenizer, bert_model, comet_inferences_root="coref_expansion", embedding_mode="ind", max_inferences=5):
+def comet_to_roberta_embeddings(bert_tokenizer, bert_model, comet_inferences_root="comet", embedding_mode="ind", max_inferences=5):
     """
 
     @param bert_tokenizer:
@@ -49,8 +61,44 @@ def comet_to_roberta_embeddings(bert_tokenizer, bert_model, comet_inferences_roo
             idx = row["combined_id"]
             key = idx
             sentence = row["sentence"]
-            before_array = ["Before this," + e + "." for e in expansions["isBefore"][idx]]
-            after_array = ["After this," + e + "." for e in expansions["isAfter"][idx]]
+
+            # remove duplicate inferences
+            before_infs = list(set([text_processing(e).replace(".", "")+"." for e in expansions["isBefore"][idx]]))
+            after_infs = list(set([text_processing(e).replace(".", "")+"." for e in expansions["isAfter"][idx]]))
+
+            # remove inferences with more than 70% overlap
+            before_array = []
+            after_array = []
+            seen = set()
+            for inf in before_infs:
+                if inf not in seen and not lexical_overlap(seen, inf):
+                    before_array.append(inf)
+                    seen.add(inf)
+
+            for inf in after_infs:
+                if inf not in seen and not lexical_overlap(seen, inf):
+                    after_array.append(inf)
+                    seen.add(inf)
+
+
+            # Sort the inferences
+            before_array = sorted(before_array[:max_inferences], reverse=False)
+            after_array = sorted(after_array[:max_inferences], reverse=False)
+
+
+            before_array = ["Before, "+ inf.lower() for inf in before_array]
+            after_array = ["After, "+ inf.lower() for inf in after_array]
+            if not before_array:
+                before_array = [row["sentence"]]
+            if not after_array:
+                after_array = [row["sentence"]]
+
+            print("=======================")
+            print(before_array)
+            print(after_array)
+            print(len(before_array), len(after_array))
+            print("\n")
+
             before_token_ids = [bert_tokenizer.encode(inf) for inf in before_array]
             after_token_ids = [bert_tokenizer.encode(inf) for inf in after_array]
             max_len = max([len(d) for d in (before_token_ids + after_token_ids)])
@@ -70,7 +118,7 @@ def comet_to_roberta_embeddings(bert_tokenizer, bert_model, comet_inferences_roo
             ends = embeddings[:, -1, :]
             start_ends = torch.hstack((starts, ends))
             start_end_embeddings[key] = start_ends.cpu().detach().numpy()
-            print(start_ends.shape)
+            # print(start_ends.shape)
             continuous_embeddings[key] = embeddings.cpu().detach().numpy()
             widths[key] = lengths
             torch.cuda.empty_cache()
@@ -96,127 +144,89 @@ def gpt3_roberta_embeddings(bert_tokenizer, bert_model, gpt3_inferences_root="gp
     start_end_embeddings = {}
     continuous_embeddings = {}
     widths = {}
+    # inference names = output_train.csv, output_dev.csv etc placed under gpt3 folder.
     for split in ['train', 'dev', 'test']:
         df = pd.read_csv(f'{gpt3_inferences_root}/output_{split}.csv')
         df.fillna('', inplace=True)
-        print(f"Number of examples in {split} {df.shape[0]}")
+        print(f"Processing {df.shape[0]} of examples in {split}")
         for index, row in tqdm(df.iterrows(), total=df.shape[0]):
-            if row["event"]:
-                key = (row["combined_id"], row["event"])
-                all_expansions = row["predictions"]
-                inferences = all_expansions.split("After:")
-                for i in range(len(inferences)):
-                    inferences[i] = text_processing(inferences[i])
-                if len(inferences) != 2:
-                    inferences.extend([""]*(2-len(inferences)))
-                    print(key)
+            key = (row["combined_id"], row["event"])
+            all_expansions = row["predictions"]
+            inferences = all_expansions.split("After:")
 
-                before_array = [inf.lstrip()+"." for inf in inferences[0].split(".") if len(inf.split()) > 3]
-                after_array = [inf.lstrip()+"." for inf in inferences[1].split(".") if len(inf.split()) > 3]
-                if not before_array:
-                    before_array = ["."]
-                if not after_array:
-                    after_array = ["."]
-                before_array = sorted(before_array[:max_inferences], reverse=False)
-                after_array = sorted(after_array[:max_inferences], reverse=False)
-                print(before_array, after_array)
+            # Clean up each inference
+            for i in range(len(inferences)):
+                inferences[i] = text_processing(inferences[i])
+            
+            # Either before or after are missing
+            if len(inferences) != 2:
+                inferences.extend([row["sentence"]]*(2-len(inferences)))
+                print(key)
+
+            # Before and after
+            before_array = [inf.lstrip() + "." for inf in inferences[0].split(".") if len(inf.split()) > 3]
+            after_array = [inf.lstrip() + "." for inf in inferences[1].split(".") if len(inf.split()) > 3]
+            
+            if not before_array:
+                before_array = [row["sentence"]]
+            if not after_array:
+                after_array = [row["sentence"]]
+
+            # Sort the inferences
+            before_array = sorted(before_array[:max_inferences], reverse=False)
+            after_array = sorted(after_array[:max_inferences], reverse=False)
+
+            # # Prepend Before and After
+            before_array = ["Before, "+ inf for inf in before_array]
+            after_array = ["After, "+ inf for inf in after_array]
+
+            print("=======================")
+            print(before_array)
+            print(after_array)
+            print(len(before_array), len(after_array))
+            print("\n")
+
+            # Tokenize and embed before and after
+            if embedding_mode == "condensed":
+                # Before and After are condensed into one paragraph
                 before_condensed = " ".join(before_array).lstrip(". ") + "."
                 after_condensed = " ".join(after_array).lstrip(". ") + "."
+                before_token_ids = [bert_tokenizer.encode(before_condensed)]
+                after_token_ids = [bert_tokenizer.encode(after_condensed)]
+                max_len = max([len(d) for d in (before_token_ids + after_token_ids)])
+                before_embeddings, before_lengths = pad_and_read_bert(before_token_ids, bert_model, max_length=max_len)
+                after_embeddings, after_lengths = pad_and_read_bert(after_token_ids, bert_model, max_length=max_len)
+            else:
+                # Before has K inferences, After has K inferences separately - useful for attending to most important inferences
+                before_token_ids = [bert_tokenizer.encode(inf) for inf in before_array]
+                after_token_ids = [bert_tokenizer.encode(inf) for inf in after_array]
+                max_len = max([len(d) for d in (before_token_ids + after_token_ids)])
+                before_embeddings, before_lengths = pad_and_read_bert(before_token_ids, bert_model, max_len)
+                after_embeddings, after_lengths = pad_and_read_bert(after_token_ids, bert_model, max_len)
+                before_embeddings = F.pad(before_embeddings, pad=(0, 0, 0, 0, 0, max_inferences - before_embeddings.shape[0]))
+                before_lengths = np.pad(before_lengths, (0, max_inferences - before_lengths.shape[0]), 'constant', constant_values=(0))
+                after_embeddings = F.pad(after_embeddings, pad=(0, 0, 0, 0, 0, max_inferences - after_embeddings.shape[0]))
+                after_lengths = np.pad(after_lengths, (0, max_inferences - after_lengths.shape[0]), 'constant', constant_values=(0))
+        
 
-                # Tokenize and embed before and after
-                if embedding_mode == "condensed":
-                    before_token_ids = [bert_tokenizer.encode(before_condensed)]
-                    after_token_ids = [bert_tokenizer.encode(after_condensed)]
-                    max_len = max([len(d) for d in (before_token_ids + after_token_ids)])
-                    before_embeddings, before_lengths = pad_and_read_bert(before_token_ids, bert_model, max_length=max_len)
-                    after_embeddings, after_lengths = pad_and_read_bert(after_token_ids, bert_model, max_length=max_len)
-                else:
-                    before_token_ids = [bert_tokenizer.encode(inf) for inf in before_array]
-                    after_token_ids = [bert_tokenizer.encode(inf) for inf in after_array]
-                    max_len = max([len(d) for d in (before_token_ids + after_token_ids)])
-                    before_embeddings, before_lengths = pad_and_read_bert(before_token_ids, bert_model, max_len)
-                    after_embeddings, after_lengths = pad_and_read_bert(after_token_ids, bert_model, max_len)
-                    before_embeddings = F.pad(before_embeddings, pad=(0, 0, 0, 0, 0, max_inferences - before_embeddings.shape[0]))
-                    before_lengths = np.pad(before_lengths, (0, max_inferences - before_lengths.shape[0]), 'constant', constant_values=(0))
-                    after_embeddings = F.pad(after_embeddings, pad=(0, 0, 0, 0, 0, max_inferences - after_embeddings.shape[0]))
-                    after_lengths = np.pad(after_lengths, (0, max_inferences - after_lengths.shape[0]), 'constant', constant_values=(0))
-                # Stack before and after
-                embeddings = torch.cat((before_embeddings, after_embeddings), axis=0)
-                lengths = np.concatenate((before_lengths, after_lengths), axis=0)
-                print(embeddings.shape, lengths.shape)
-                if torch.equal(before_embeddings, after_embeddings):
-                    print("SAME!")
-                starts = embeddings[:, 0, :]
-                ends = embeddings[:, -1, :]
-                start_ends = torch.hstack((starts, ends))
-                start_end_embeddings[key] = start_ends.cpu().detach().numpy()
-                # print(start_ends.shape)
-                continuous_embeddings[key] = embeddings.cpu().detach().numpy()
-                widths[key] = lengths
-                torch.cuda.empty_cache()
+            # Stack before and after
+            embeddings = torch.cat((before_embeddings, after_embeddings), axis=0)
+            lengths = np.concatenate((before_lengths, after_lengths), axis=0)
+            starts = embeddings[:, 0, :]
+            ends = embeddings[:, -1, :]
+            start_ends = torch.hstack((starts, ends))
+            start_end_embeddings[key] = start_ends.cpu().detach().numpy()
+            continuous_embeddings[key] = embeddings.cpu().detach().numpy()
+            widths[key] = lengths
+            # print(start_ends.shape)
+            torch.cuda.empty_cache()
 
-        # hkl.dump(start_end_embeddings, f"gpt3/{split}_e_startend_ns.hkl", mode='w')
-        # hkl.dump(widths, f"gpt3/{split}_e_widths_ns.hkl", mode='w')
         save_pkl_dump(f"gpt3/gpt3_{embedding_mode}_{split}_startend", start_end_embeddings)
         save_pkl_dump(f"gpt3/gpt3_{embedding_mode}_{split}_widths", widths)
         save_pkl_dump(f"gpt3/gpt3_{embedding_mode}_{split}_cont", continuous_embeddings)
         print(f"Done {split}")
-
-
-# def gpt3_roberta_separate_embeddings(bert_tokenizer, bert_model, gpt3_inferences_root="gpt3"):
-#     start_end_embeddings = {}
-#     continuous_embeddings = {}
-#     widths = {}
-#     PADDING = True
-#     for split in ['train', 'dev']:
-#         df = pd.read_csv(f'gpt3_inferences_root/output_{split}.csv')
-#         for index, row in tqdm(df.iterrows(), total=df.shape[0]):
-#             key = (row["combined_id"], row["event"])
-#             all_expansions = row["predictions"]
-#             inferences = all_expansions.split("After:")
-#             for i in range(len(inferences)):
-#                 inferences[i] = text_processing(inferences[i])
-
-#             before_array = sorted([inf + "." for inf in inferences[0].split(".") if len(inf.split()) > 3])[:5]
-#             after_array = sorted([inf + "." for inf in inferences[1].split(".") if len(inf.split()) > 3])[:5]
-#             # before_array = before_array + [" "]*(7-len(before_array))
-#             # after_array = after_array + [" "]*(7-len(after_array))
-#             # print("before, after arrays", len(after_array), len(after_array))
-#             final_array = before_array + after_array
-#             final_array.sort()
-#             token_ids = []
-#             for inf in final_array:
-#                 tokens = bert_tokenizer.encode(inf)
-#                 # print(len(tokens))
-#                 token_ids.append(tokens)
-#             # print(bert_tokenizer.pad_token_id)
-#             # Find all embeddings of the inferences and find start_end_embeddings
-
-#             embds, l = pad_and_read_bert(token_ids, bert_model)
-#             embeddings = embds
-#             lengths = l
-#             if PADDING:
-#                 embeddings = F.pad(embds, pad=(0, 0, 0, 0, 0, 10 - embds.shape[0]))
-#                 lengths = np.pad(l, (0, 10 - l.shape[0]), 'constant', constant_values=(0))
-#             print(embeddings.shape)
-
-#             starts = embeddings[:, 0, :]
-#             ends = embeddings[:, -1, :]
-#             start_ends = torch.hstack((starts, ends))
-#             start_end_embeddings[key] = start_ends.cpu().detach().numpy()
-#             # print(start_ends.shape)
-#             continuous_embeddings[key] = embeddings.cpu().detach().numpy()
-#             # print(embeddings.shape)
-#             widths[key] = lengths
-#             torch.cuda.empty_cache()
-#             # break
-
-#         # # hkl.dump(start_end_embeddings, f"gpt3/{split}_e_startend_ns.hkl", mode='w')
-#         # # hkl.dump(widths, f"gpt3/{split}_e_widths_ns.hkl", mode='w')
-#         save_pkl_dump(f"gpt3/{split}_e_startend_ind", start_end_embeddings)
-#         save_pkl_dump(f"gpt3/{split}_e_widths_ind", widths)
-#         save_pkl_dump(f"gpt3/{split}_e_cont_ind", continuous_embeddings)
-#         print(f"Done {split}")
+    # hkl.dump(start_end_embeddings, f"gpt3/{split}_e_startend_ns.hkl", mode='w')
+    # hkl.dump(widths, f"gpt3/{split}_e_widths_ns.hkl", mode='w')
 
 
 def roberta_sentence_embeddings(bert_tokenizer, bert_model):
@@ -246,8 +256,12 @@ def roberta_sentence_embeddings(bert_tokenizer, bert_model):
 def text_processing(inference):
     inference = inference.replace("After:", "")
     inference = inference.replace("Before:", "")
-    inference = inference.replace("After,", "")
-    inference = inference.replace("Before,", "")
+    inference = inference.replace("Before this,", "")
+    inference = inference.replace("After this,", "")
+    inference = inference.replace("Before", "")
+    inference = inference.replace("After", "")
+    inference = inference.replace(",", "")
+    inference = inference.replace(",", "")
     inference = inference.replace("\n", "")
     inference = inference.strip()
     return inference

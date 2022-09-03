@@ -81,9 +81,23 @@ def remove_nested_mentions(cluster_ids, doc_ids, starts, ends):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='configs/config_clustering.json')
+    parser.add_argument("--dev_best_name", type=str, default="")
     args = parser.parse_args()
 
     config = pyhocon.ConfigFactory.parse_file(args.config)
+    if args.dev_best_name:
+        mention_type = config["mention_type"]
+        # ('dev_events_model_9_average_0.75_topic_level.conll', 68.22460756651444)
+        conll_file = args.dev_best_name.split(".conll")[0]
+        #dev_events_model_9_average_0.75_topic_level
+        splits = conll_file.split("average")
+        model_num = int(splits[0].replace("_", "")[-1])
+        thresh = splits[1].replace("_", "") #0.75topiclevel
+        thresh = float(thresh.replace("topiclevel", ""))
+        config["model_num"] = model_num
+        config["threshold"] = thresh
+        config["split"] = "test"
+    
     print(pyhocon.HOCONConverter.convert(config, "hocon"))
     create_folder(config['save_path'])
     device = 'cuda:{}'.format(config['gpu_num'][0]) if torch.cuda.is_available() else 'cpu'
@@ -242,3 +256,4 @@ if __name__ == '__main__':
 
     write_output_file(data.documents, all_clusters, doc_ids, starts, ends, config['save_path'], doc_name,
                       topic_level=config.topic_level, corpus_level=not config.topic_level)
+    print(doc_name+"_topic_level.conll")

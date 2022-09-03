@@ -332,11 +332,11 @@ def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embed
             # print("Fusion", g1_new.shape)
         elif config.fusion == "intraspan":
             # Intra-span - key =inferences for span1, query= span1
-            # print("Attention inputs", span1.shape, both1_init.shape)
-            before1, before1_weights = fusion_model(span1, torch.cat((span1, before1_init), axis=1), config)
-            after1, after1_weights = fusion_model(span1, torch.cat((span1, after1_init), axis=1), config)
-            before2, before2_weights = fusion_model(span2, torch.cat((span2, before2_init), axis=1), config)
-            after2, after2_weights = fusion_model(span2, torch.cat((span2, after2_init), axis=1), config)
+            # print("Attention inputs", span1.shape, both1_init.shape)  torch.cat((span1, before1_init), axis=1)
+            before1, before1_weights = fusion_model(span1, before1_init, config)
+            after1, after1_weights = fusion_model(span1, after1_init, config)
+            before2, before2_weights = fusion_model(span2, before2_init, config)
+            after2, after2_weights = fusion_model(span2, after2_init, config)
             e1_new = torch.cat((before1, after1), axis=1)
             e2_new = torch.cat((before2, after2), axis=1)
         elif config.fusion == "random":
@@ -353,10 +353,10 @@ def final_vectors(first_batch_ids, second_batch_ids, config, span1, span2, embed
             # print("Attention output", g1_new.shape, g2_new.shape)
         elif config.fusion == "interspan":
             # Inter-span - key =inferences for span1, query= span2
-            before1, before1_weights = fusion_model(span2, torch.cat((span1, before1_init), axis=1), config)
-            after1, after1_weights = fusion_model(span2, torch.cat((span1, after1_init), axis=1), config)
-            before2, before2_weights = fusion_model(span1, torch.cat((span2, before2_init), axis=1), config)
-            after2, after2_weights = fusion_model(span1, torch.cat((span2, after2_init), axis=1), config)
+            before1, before1_weights = fusion_model(span2, before1_init, config)
+            after1, after1_weights = fusion_model(span2, after1_init, config)
+            before2, before2_weights = fusion_model(span1, before2_init, config)
+            after2, after2_weights = fusion_model(span1, after2_init, config)
             e1_new = torch.cat((before1, after1), axis=1)
             e2_new = torch.cat((before2, after2), axis=1)
         elif config.fusion == "interspan_full":
