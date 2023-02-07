@@ -1,10 +1,10 @@
 # 1 ENV: Activate your env
-source coref/bin/activate
+source coref1/bin/activate
 
 # 2 CONFIG: configure seed and paths
-seed="120" # make sure you change logs, models to _seed in config files
+seed="12345" # make sure you change logs, models to _seed in config files
 configseed=""  # optional if config is renamed
-model="intraspan"
+model="fs_intraspan"
 gpu=2
 
 # 3 TRAIN: Run pairwise scorer
@@ -25,4 +25,4 @@ s="${str##*$'\n'}"
 
 # 7 EVAL: Compute test score
 python -u coval/scorer.py data/ecb/gold_singletons/test_events_topic_level.conll  "models/${model}_${seed}/${s}"
-mv "inter.out" "logs/${model}_${seed}"
+# mv "inter.out" "logs/${model}_${seed}"

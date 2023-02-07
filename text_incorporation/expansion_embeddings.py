@@ -221,9 +221,9 @@ def gpt3_roberta_embeddings(bert_tokenizer, bert_model, gpt3_inferences_root="gp
             # print(start_ends.shape)
             torch.cuda.empty_cache()
 
-        save_pkl_dump(f"gpt3/gpt3_{embedding_mode}_{split}_startend", start_end_embeddings)
-        save_pkl_dump(f"gpt3/gpt3_{embedding_mode}_{split}_widths", widths)
-        save_pkl_dump(f"gpt3/gpt3_{embedding_mode}_{split}_cont", continuous_embeddings)
+        save_pkl_dump(f"{gpt3_inferences_root}/gpt3_{embedding_mode}_{split}_startend", start_end_embeddings)
+        save_pkl_dump(f"{gpt3_inferences_root}/gpt3_{embedding_mode}_{split}_widths", widths)
+        save_pkl_dump(f"{gpt3_inferences_root}/gpt3_{embedding_mode}_{split}_cont", continuous_embeddings)
         print(f"Done {split}")
     # hkl.dump(start_end_embeddings, f"gpt3/{split}_e_startend_ns.hkl", mode='w')
     # hkl.dump(widths, f"gpt3/{split}_e_widths_ns.hkl", mode='w')
@@ -287,8 +287,8 @@ if __name__ == '__main__':
     if commonsense_model == "comet":
         comet_to_roberta_embeddings(bert_tokenizer, bert_model)
     elif commonsense_model == "gpt3":
-        config = pyhocon.ConfigFactory.parse_file('configs/config_pairwise.json')
+        # config = pyhocon.ConfigFactory.parse_file('configs/config_pairwise.json')
         # You can embed individually with "ind" and as one single before or after vector with condensed
-        gpt3_roberta_embeddings(bert_tokenizer, bert_model, embedding_mode="ind", max_inferences=5)
+        gpt3_roberta_embeddings(bert_tokenizer, bert_model, embedding_mode="ind", max_inferences=5,gpt3_inferences_root='gpt3_fs')
     else:
         raise ValueError("commonsense_model should be one of comet or gpt3")

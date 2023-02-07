@@ -42,8 +42,8 @@
   "plot_cosine": false,
 
   "data_folder": "data/ecb/mentions",
-  "save_path": "models/baseline_120",
-  "model_path" : "models/baseline_120",
+  "save_path": "models/baseline_369",
+  "model_path" : "models/baseline_369",
   "model_num": 9,
   "keep_singletons": false,
 

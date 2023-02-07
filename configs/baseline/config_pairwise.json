@@ -17,7 +17,7 @@
   "use_predicted_topics": false,
   "segment": true,
 
-  "random_seed": 120,
+  "random_seed": 369,
   "epochs": 10,
   "batch_size": 512,
   "learning_rate": 1e-4,
@@ -48,9 +48,9 @@
   "expansion_dimension":3092,
   "plot_cosine": false,
 
-  "log_path": "logs/baseline_120/",
+  "log_path": "logs/baseline_369/",
   "data_folder": "data/ecb/mentions",
   "span_repr_path": "models/span_scorers/events_span_repr_0",
   "span_scorer_path": "models/span_scorers/events_span_scorer_0",
-  "model_path": "models/baseline_120/"
+  "model_path": "models/baseline_369/"
 }
