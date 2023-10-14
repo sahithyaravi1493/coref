@@ -1,7 +1,7 @@
 def parse_key_file(key_file):
         try:
                 from nltk.parse.stanford import StanfordParser
-                parser = StanfordParser(model_path="edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz", java_options='-Xmx8G')
+                parser = StanfordParser(model_path="edu/stanford/nlp/models/lexparser/englishPCFG.caseless.ser.gz", java_options='-Xmx8G') 
                 print("Starting to parse key_file!")
                 print("This might take a while...")
                 new_file = open(key_file + ".parsed","w")
@@ -13,6 +13,7 @@ def parse_key_file(key_file):
                                         new_file.write(line)
                                         continue
                                 elif len(line.strip()) == 0 or (line.startswith("#end") and len(tmp_conll_lines)>0):
+                                        # print(tmp_sentence)
                                         parse = parser.parse_sents(tmp_sentence)
                                         for tree in parse:
                                                 for tree_line in tree:       #line is a Tree

@@ -5,9 +5,10 @@ from transformers import AutoTokenizer, AutoModel
 from itertools import product
 
 from conll import write_output_file
-from models import SpanScorer, SimplePairWiseClassifier, SpanEmbedder
+from models import SpanScorer, SimplePairWiseClassifier, SpanEmbedder, SimpleFusionLayer
 from utils import *
 from model_utils import *
+from train_pairwise_scorer import get_all_candidate_spans
 
 
 def init_models(config, device):
@@ -26,9 +27,14 @@ def init_models(config, device):
                                                             "pairwise_scorer_{}".format(config['model_num'])),
                                                map_location=device))
     pairwise_scorer.eval()
+    fusion_layer = SimpleFusionLayer(config).to(device)
+    if config.include_text:
+        fusion_layer.load_state_dict(torch.load(os.path.join(config['model_path'],
+                                                            "fusion_model_{}".format(config['model_num'])),
+                                                map_location=device))
+    fusion_layer.eval()
 
-    return span_repr, span_scorer, pairwise_scorer
-
+    return span_repr, span_scorer, pairwise_scorer,fusion_layer
 
 def is_included(docs, starts, ends, i1, i2):
     doc1, start1, end1 = docs[i1], starts[i1], ends[i1]
@@ -75,9 +81,23 @@ def remove_nested_mentions(cluster_ids, doc_ids, starts, ends):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='configs/config_clustering.json')
+    parser.add_argument("--dev_best_name", type=str, default="")
     args = parser.parse_args()
 
     config = pyhocon.ConfigFactory.parse_file(args.config)
+    if args.dev_best_name:
+        mention_type = config["mention_type"]
+        # ('dev_events_model_9_average_0.75_topic_level.conll', 68.22460756651444)
+        conll_file = args.dev_best_name.split(".conll")[0]
+        #dev_events_model_9_average_0.75_topic_level
+        splits = conll_file.split("average")
+        model_num = int(splits[0].replace("_", "")[-1])
+        thresh = splits[1].replace("_", "") #0.75topiclevel
+        thresh = float(thresh.replace("topiclevel", ""))
+        config["model_num"] = model_num
+        config["threshold"] = thresh
+        config["split"] = "test"
+    
     print(pyhocon.HOCONConverter.convert(config, "hocon"))
     create_folder(config['save_path'])
     device = 'cuda:{}'.format(config['gpu_num'][0]) if torch.cuda.is_available() else 'cpu'
@@ -85,13 +105,26 @@ if __name__ == '__main__':
     # Load models and init clustering
     bert_model = AutoModel.from_pretrained(config['bert_model']).to(device)
     config['bert_hidden_size'] = bert_model.config.hidden_size
-    span_repr, span_scorer, pairwise_scorer = init_models(config, device)
+    span_repr, span_scorer, pairwise_scorer, fusion_model= init_models(config, device)
     clustering = AgglomerativeClustering(n_clusters=None, affinity='precomputed', linkage=config['linkage_type'],
                                          distance_threshold=config['threshold'])
 
     # Load data
     bert_tokenizer = AutoTokenizer.from_pretrained(config['bert_model'])
     data = create_corpus(config, bert_tokenizer, config.split, is_training=False)
+    # Additional embeddings for commonsense
+    graph_embeddings_train, graph_embeddings_dev = None, None
+    expansions_train, expansions_val = None, None
+    expansion_embeddings_train, expansion_embeddings_val = None, None
+
+    if config.include_graph:
+        # Graph embeddings for commonsense
+        graph_embeddings_dev = load_stored_embeddings(config, split=config.split)
+
+    if config.include_text:
+        # Text embeddings for commonsense
+        expansions_val, expansion_embeddings_val = load_text_embeddings(config, split=config.split)
+        #config = assign_sizes(config)
 
     doc_ids, sentence_ids, starts, ends = [], [], [], []
     all_topic_predicted_clusters = []
@@ -102,6 +135,9 @@ if __name__ == '__main__':
     for topic_num, topic in enumerate(data.topic_list):
         print('Processing topic {}'.format(topic))
         docs_embeddings, docs_length = pad_and_read_bert(data.topics_bert_tokens[topic_num], bert_model)
+        topic_spans = get_all_candidate_spans(
+                config, bert_model, span_repr, span_scorer, data, topic_num, expansions_val,
+                expansion_embeddings_val)
         span_meta_data, span_embeddings, num_of_tokens = get_all_candidate_from_topic(
             config, data, topic_num, docs_embeddings, docs_length)
 
@@ -140,8 +176,8 @@ if __name__ == '__main__':
         torch.cuda.empty_cache()
         all_scores = []
         with torch.no_grad():
-            for i in range(0, len(first), 10000):
-                end_max = i + 10000
+            for i in range(0, len(first), 1000):
+                end_max = i + 1000
                 first_idx, second_idx = first[i:end_max], second[i:end_max]
                 g1 = span_repr(start_end_embeddings[first_idx],
                                [continuous_embeddings[k] for k in first_idx],
@@ -149,7 +185,27 @@ if __name__ == '__main__':
                 g2 = span_repr(start_end_embeddings[second_idx],
                                [continuous_embeddings[k] for k in second_idx],
                                width[second_idx])
-                scores = pairwise_scorer(g1, g2)
+                # calculate the keys to look up graph embeddings for this batch
+                combined_ids1 = [topic_spans.combined_ids[k]
+                                    for k in first_idx]
+                combined_ids2 = [topic_spans.combined_ids[k]
+                                    for k in second_idx]
+
+                knowledge_embeddings = topic_spans.knowledge_start_end_embeddings, topic_spans.knowledge_continuous_embeddings, topic_spans.knowledge_width
+                e1, e2 = None, None # expansion embeddings
+                if config.include_text:
+                    if True: # used to be attention based
+                        # If knowledge embeddings need to be represented similar to spans i.e with attention
+                        e1, e2 = get_expansion_with_attention(span_repr, knowledge_embeddings, first_idx,
+                                                                second_idx, device, config)
+                    else:
+                        e1 = torch.stack([topic_spans.knowledge_start_end_embeddings[k] for k in first_idx]).to(device)
+                        e2 = torch.stack([topic_spans.knowledge_start_end_embeddings[k] for k in second_idx]).to(device)
+
+                g1_final, g2_final, attn_weights = final_vectors(combined_ids1, combined_ids2, config, g1, g2,
+                                                                    graph_embeddings_dev, e1, e2, fusion_model)
+
+                scores = pairwise_scorer(g1_final, g2_final)
 
                 torch.cuda.empty_cache()
                 if config['training_method'] in ('continue', 'e2e') and not config['use_gold_mentions']:
@@ -200,3 +256,4 @@ if __name__ == '__main__':
 
     write_output_file(data.documents, all_clusters, doc_ids, starts, ends, config['save_path'], doc_name,
                       topic_level=config.topic_level, corpus_level=not config.topic_level)
+    print(doc_name+"_topic_level.conll")

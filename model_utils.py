@@ -1,24 +1,25 @@
-import numpy as np
-import torch
 from itertools import compress
 
+import numpy as np
+import torch
 
 
-def pad_and_read_bert(bert_token_ids, bert_model):
+def pad_and_read_bert(bert_token_ids, bert_model, max_length=None):
     length = np.array([len(d) for d in bert_token_ids])
-    max_length = max(length)
-
+    if max_length is None:
+        max_length = max(length)
+    # print(length, max_length)
     if max_length > 512:
         raise ValueError('Error! Segment too long!')
 
     device = bert_model.device
     docs = torch.tensor([doc + [0] * (max_length - len(doc)) for doc in bert_token_ids], device=device)
-    attention_masks = torch.tensor([[1] * len(doc) + [0] * (max_length - len(doc)) for doc in bert_token_ids], device=device)
+    attention_masks = torch.tensor([[1] * len(doc) + [0] * (max_length - len(doc)) for doc in bert_token_ids],
+                                   device=device)
     with torch.no_grad():
         embeddings, _ = bert_model(docs, attention_masks)
 
     return embeddings, length
-
 
 
 def get_docs_candidate(original_tokens, bert_start_end, max_span_width):
@@ -30,9 +31,10 @@ def get_docs_candidate(original_tokens, bert_start_end, max_span_width):
     candidate_ends = candidate_starts + torch.tensor(range(max_span_width)).unsqueeze(0)
     candidate_start_sentence_indices = sentences.unsqueeze(1).repeat(1, max_span_width)
     padded_sentence_map = torch.cat((sentences, sentences[-1].repeat(max_span_width)))
-    candidate_end_sentence_indices = torch.stack(list(padded_sentence_map[i:i + max_span_width] for i in range(num_tokens)))
+    candidate_end_sentence_indices = torch.stack(
+        list(padded_sentence_map[i:i + max_span_width] for i in range(num_tokens)))
     candidate_mask = (candidate_start_sentence_indices == candidate_end_sentence_indices) * (
-                candidate_ends < num_tokens)
+            candidate_ends < num_tokens)
     flattened_candidate_mask = candidate_mask.view(-1)
     candidate_starts = candidate_starts.view(-1)[flattened_candidate_mask]
     candidate_ends = candidate_ends.view(-1)[flattened_candidate_mask]
@@ -51,9 +53,6 @@ def get_docs_candidate(original_tokens, bert_start_end, max_span_width):
            (bert_candidate_starts, bert_candidate_ends)
 
 
-
-
-
 def get_all_token_embedding(embedding, start, end):
     span_embeddings, length = [], []
     for s, e in zip(start, end):
@@ -61,7 +60,6 @@ def get_all_token_embedding(embedding, start, end):
         span_embeddings.append(embedding[indices])
         length.append(len(indices))
     return span_embeddings, length
-
 
 
 def get_all_candidate_from_topic(config, data, topic_num, docs_embeddings, docs_length, is_training=True):
@@ -94,7 +92,6 @@ def get_all_candidate_from_topic(config, data, topic_num, docs_embeddings, docs_
         span_origin_start.extend(original_candidate_starts)
         span_origin_end.extend(original_candidate_ends)
 
-
         bert_candidate_starts, bert_candidate_ends = bert_candidates
         doc_embeddings = docs_embeddings[i][torch.tensor(range(docs_length[i]))]  # remove padding
         continuous_tokens_embedding, lengths = get_all_token_embedding(doc_embeddings, bert_candidate_starts,
@@ -104,11 +101,8 @@ def get_all_candidate_from_topic(config, data, topic_num, docs_embeddings, docs_
         topic_width.extend(span_width)
         topic_continuous_embeddings.extend(continuous_tokens_embedding)
 
-
     topic_start_end_embeddings = torch.stack(topic_start_end_embeddings)
     topic_width = torch.stack(topic_width)
-
-
 
     return (np.asarray(span_doc), torch.tensor(span_sentence), torch.tensor(span_origin_start),
             torch.tensor(span_origin_end)), \

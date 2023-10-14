@@ -1,5 +1,5 @@
 {
-  "gpu_num" : [0],
+  "bert_tokenizer": "roberta-large",
   "bert_model": "roberta-large",
   "bert_hidden_size": 1024,
   "hidden_layer": 1024,
@@ -9,19 +9,20 @@
   "embedding_dimension": 20,
 
   "max_mention_span": 10,
-  "use_gold_mentions": false,
+  "use_gold_mentions": true,
   "mention_type": "events",
   "top_k": 0.25,
-  "training_method": "continue",
+  "training_method": "pipeline",
   "subtopic": true,
   "use_predicted_topics": false,
   "segment": true,
 
-  "random_seed": 0,
+  "random_seed": 369,
   "epochs": 10,
-  "batch_size": 32,
+  "batch_size": 512,
   "learning_rate": 1e-4,
   "weight_decay": 0,
+  "pos_class_weight":1,
   "loss": "bce",
   "optimizer": "adam",
   "adam_epsilon": 1e-8,
@@ -29,9 +30,27 @@
   "neg_samp": true,
   "exact": false,
 
-  "log_path": "logs/pairwise_scorer/",
+  "include_graph": false,
+  "knowledge_embedding_dimension": 200,
+  "relations_per_sentence": 2,
+  "embedding_type": "rgcn",
+  "stored_embeddings_path": "comet/rgcn_hidden",
+
+  "exclude_span_repr": false,
+  "include_text": false,
+  "mode": "",
+  "attention_based": false,
+  "fusion": "",
+  "inferences_path": "",
+  "text_embeddings_path": "",
+  "reduce_attention_output":false,
+  "n_inferences":10,
+  "expansion_dimension":3092,
+  "plot_cosine": false,
+
+  "log_path": "logs/baseline_369/",
   "data_folder": "data/ecb/mentions",
   "span_repr_path": "models/span_scorers/events_span_repr_0",
   "span_scorer_path": "models/span_scorers/events_span_scorer_0",
-  "model_path": "models/pairwise_scorers"
+  "model_path": "models/baseline_369/"
 }

@@ -7,13 +7,13 @@ class Evaluation:
         self.labels = labels
         self.tp = (predictions == 1) * (labels == 1)
 
-        self.tp_num = torch.nonzero(self.tp).squeeze().shape[0]
+        self.tp_num = torch.nonzero(self.tp).shape[0]
         self.tn = (predictions != 1) * (labels != 1)
-        self.tn_num = torch.nonzero(self.tn).squeeze().shape[0]
-        self.fp = (predictions == 1) * (labels != 1)
-        self.fp_num = torch.nonzero(self.fp).squeeze().shape[0]
+        self.tn_num = torch.nonzero(self.tn).shape[0]
+        self.fp = (predictions == 1) * (labels != 1) 
+        self.fp_num = torch.nonzero(self.fp).shape[0]
         self.fn = (predictions != 1) * (labels == 1)
-        self.fn_num = torch.nonzero(self.fn).squeeze().shape[0]
+        self.fn_num = torch.nonzero(self.fn).shape[0]
         self.total = len(labels)
 
 

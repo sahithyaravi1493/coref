@@ -18,6 +18,8 @@ class TopicSpans:
         self.origin_start = []
         self.origin_end = []
         self.width = []
+        self.combined_ids = []
+        self.span_texts = []
 
         self.text = []
         self.lemma = []
@@ -32,6 +34,10 @@ class TopicSpans:
         # embeddings
         self.start_end_embeddings = []
         self.continuous_embeddings = []
+        self.knowledge_start_end_embeddings = []
+        self.knowledge_continuous_embeddings = []
+        self.knowledge_width = []
+        self.knowledge_text = []
 
         self.get_all_spans_from_topic(data, topic_num, docs_embeddings, docs_lengths)
         self.create_tensor()
@@ -114,9 +120,22 @@ class TopicSpans:
             sentence_span, original_candidates, bert_candidates = self.get_docs_candidate(original_tokens, bert_start_end)
             original_candidate_starts, original_candidate_ends = original_candidates
 
+            # Get actual span texts corresponding to the embeddings
+            sid_list = sentence_span.tolist()
+            start_list = original_candidate_starts.tolist()
+            end_list = original_candidate_ends.tolist()
+            keys = [(x[0],x[1]) for x in original_tokens]
+            original_token_texts = [x[2] for x in original_tokens]
+            lookup = dict(zip(keys, original_token_texts))
+            spans = []
+            for start, end, sid in zip(start_list, end_list, sid_list):
+                text = ""
+                for idx in range(start, end+1):
+                    if (sid, idx) in lookup:
+                        text += lookup[(sid, idx)] + " "
+                spans.append(text)
+            self.span_texts.extend(spans)
             #token_text = np.asarray([x[2] for x in original_tokens])
-
-
 
             # update origin idx
             self.doc_ids.extend([doc_id] * len(sentence_span))
@@ -171,6 +190,8 @@ class TopicSpans:
         self.bert_end = self.bert_end[indices]
 
         self.labels = self.labels[indices]
+        self.span_texts = [self.span_texts[k] for k in indices]
+
 
         # embeddings
         if len(self.start_end_embeddings) > 0:

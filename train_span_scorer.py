@@ -73,7 +73,7 @@ if __name__ == '__main__':
 
 
     # read and tokenize data
-    bert_tokenizer = AutoTokenizer.from_pretrained(config['bert_model'], add_special_tokens=True)
+    bert_tokenizer = AutoTokenizer.from_pretrained(config['bert_tokenizer'], add_special_tokens=True)
     training_set = create_corpus(config, bert_tokenizer, 'train')
     dev_set = create_corpus(config, bert_tokenizer, 'dev')
 

@@ -20,13 +20,16 @@ def main():
 
     path = sys.argv[1]
     mention_type = sys.argv[2]
-    sys_file = 'data/ecb/gold/dev_{}_topic_level.conll'.format(mention_type)
+    print(path, mention_type)
+  
+    level = 'topic' # 'topic
+    sys_file = f'data/ecb/gold_singletons/dev_{mention_type}_{level}_level.conll'
 
     all_scores = {}
     max_conll_f1 = (None, 0)
 
     for key_file in os.listdir(path):
-        if key_file.endswith('conll') and 'topic' in key_file: # and key_file.startswith('dev'):
+        if key_file.endswith('conll') and level in key_file: # and key_file.startswith('dev'):
             print('Processing file: {}'.format(key_file))
             full_path = os.path.join(path,key_file)
             scores = evaluate(full_path, sys_file, allmetrics, NP_only, remove_nested,
